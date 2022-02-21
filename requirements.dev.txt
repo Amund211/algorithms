@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest
+mypy>=0.931
+pre-commit
+flake8
+black
+isort
