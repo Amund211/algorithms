@@ -135,3 +135,85 @@ def ntt(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
         seq = new_seq
 
     return seq
+
+
+def ntt_r(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
+    """Perform the ntt in the ring X^(2^m) + 1"""
+    length = len(seq)
+    assert is_power_of_2(length), "Sequence length must be a power of 2"
+    m = int(math.log(length, 2))
+    assert 2**m == length
+
+    return fold_left(seq, p, omega) + fold_right(seq, p, omega)
+
+
+def fold_left(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
+    new_seq[m_offset : m_offset + new_fold_length] = (
+        (seq[m_offset + i] + p_v * seq[m_offset + i + new_fold_length]) % p
+        for i in range(new_fold_length)
+    )
+
+
+def fold_right(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
+    new_seq[p_offset : p_offset + new_fold_length] = (
+        (seq[m_offset + i] + m_v * seq[m_offset + i + new_fold_length]) % p
+        for i in range(new_fold_length)
+    )
+
+
+
+
+"""
+    # Fold count is number of folds performed so far
+    for fold_count in range(m):
+        print(f"-----------{fold_count=}--------------")
+
+        new_seq = [None] * length
+        print(f"{seq=} {new_seq=}")
+        # Length of the sequence we will fold this iteration
+        fold_length = 2 ** (m - fold_count)
+        m_v = pow(omega, 2 ** (m - fold_count - 1) + 2**m, p)
+        p_v = pow(omega, 2 ** (m - fold_count - 1), p)
+
+        # The length of the new folds we will create
+        new_fold_length = fold_length // 2
+
+        print(f"{fold_length=} {new_fold_length=} {m_v=} {p_v=}")
+
+        # Index into the current folds
+        for fold_index in range(2**fold_count):
+            print(f"---Iteration {fold_index=} ----------")
+
+            m_offset = fold_index * fold_length
+            p_offset = m_offset + new_fold_length
+
+            print(f"{m_offset=} {p_offset=}")
+            print(f"{m_offset=} : {m_offset + new_fold_length=}")
+            print(f"{p_offset=} : {p_offset + new_fold_length=}")
+
+            for i in range(new_fold_length):
+                print(
+                    f"\t{i=} {seq[m_offset + i]=} {seq[m_offset + i + new_fold_length]=}"
+                )
+                print(
+                    "\t",
+                    (seq[m_offset + i] + p_v * seq[m_offset + i + new_fold_length]) % p,
+                )
+                print(
+                    "\t",
+                    (seq[m_offset + i] + m_v * seq[m_offset + i + new_fold_length]) % p,
+                )
+
+            new_seq[m_offset : m_offset + new_fold_length] = (
+                (seq[m_offset + i] + p_v * seq[m_offset + i + new_fold_length]) % p
+                for i in range(new_fold_length)
+            )
+            new_seq[p_offset : p_offset + new_fold_length] = (
+                (seq[m_offset + i] + m_v * seq[m_offset + i + new_fold_length]) % p
+                for i in range(new_fold_length)
+            )
+
+        seq = new_seq
+
+    return seq
+"""
