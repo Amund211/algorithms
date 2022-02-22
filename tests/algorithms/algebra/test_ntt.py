@@ -8,11 +8,11 @@ from sympy.ntheory.residue_ntheory import primitive_root as sympy_primitive_root
 from algorithms.algebra.ntt import (
     is_coprime,
     is_prime,
+    ntt,
     primitive_k_th_roots_of_unity,
     primitive_root,
     primitive_roots,
 )
-
 
 MAX_K = MAX_N = 11
 
@@ -57,3 +57,10 @@ def test_primitive_k_th_roots_of_unity(k: int, n: int) -> None:
 
     for root in roots:
         assert pow(root, k, n) == 1, f"{pow(root, k, n)=} {root=}"
+
+
+# @pytest.mark.parametrize("n", range(1, MAX_N))
+def test_ntt() -> None:
+    assert ntt([1, 2], 257, 2**4) == [33, -31 % 257]
+    ntt([1, 2, 3, 4], 257, 2**2)[:2] == [56, 42]
+    print(ntt([1, 2, 3, 4], 257, 2**2))
