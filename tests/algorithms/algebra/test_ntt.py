@@ -10,6 +10,7 @@ from algorithms.algebra.ntt import (
     is_prime,
     ntt,
     ntt_multiply_polynomials,
+    ntt_r,
     primitive_k_th_roots_of_unity,
     primitive_root,
     primitive_roots,
@@ -49,6 +50,7 @@ k_th_root_cases = filter(
     itertools.product(range(2, MAX_K), filter(is_prime, range(1, MAX_N))),
 )
 
+
 # Only consider prime n, so that lambda(n) is n - 1
 @pytest.mark.parametrize("k, n", k_th_root_cases)
 def test_primitive_k_th_roots_of_unity(k: int, n: int) -> None:
@@ -60,16 +62,24 @@ def test_primitive_k_th_roots_of_unity(k: int, n: int) -> None:
         assert pow(root, k, n) == 1, f"{pow(root, k, n)=} {root=}"
 
 
-# @pytest.mark.parametrize("n", range(1, MAX_N))
-def test_ntt() -> None:
-    assert ntt([1, 2], 257, 2**4) == [33, -31 % 257]
-    assert ntt([3, 4], 257, 2**4) == [67, -61 % 257]
-    assert ntt([-5 % 257, 10], 257, 2**4) == [155, -165 % 257]
+NTT_CASES = (
+    ((1, 2), 257, 2**4, (33, -31 % 257)),
+    ((3, 4), 257, 2**4, (67, -61 % 257)),
+    ((-5 % 257, 10), 257, 2**4, (155, -165 % 257)),
+    ((1, 2, 3, 4), 257, 2**2, (56, 42, 97, 66)),
+    ((5, 6, 7, 8), 257, 2**2, (139, 95, 52, 248)),
+)
 
-    assert ntt([1, 2, 3, 4], 257, 2**2)[:2] == [56, 42]
-    assert ntt([1, 2, 3, 4], 257, 2**2) == [56, 42, 97, 66]
-    assert ntt([5, 6, 7, 8], 257, 2**2) == [139, 95, 52, 248]
+
+@pytest.mark.parametrize("seq, p, omega, result", NTT_CASES)
+def test_ntt(seq: tuple[int], p: int, omega: int, result: tuple[int]) -> None:
+    assert ntt(seq=seq, p=p, omega=omega) == result
+
+
+@pytest.mark.parametrize("seq, p, omega, result", NTT_CASES)
+def test_ntt_r(seq: tuple[int], p: int, omega: int, result: tuple[int]) -> None:
+    assert ntt_r(seq=seq, p=p, omega=omega) == result
 
 
 def test_ntt_multiply_polynomials() -> None:
-    assert ntt_multiply_polynomials([1, 2], [3, 4], 257, 2**4) == [155, -165 % 257]
+    assert ntt_multiply_polynomials((1, 2), (3, 4), 257, 2**4) == (155, -165 % 257)
