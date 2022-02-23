@@ -9,6 +9,7 @@ from algorithms.algebra.ntt import (
     is_coprime,
     is_prime,
     ntt,
+    ntt_multiply_polynomials,
     primitive_k_th_roots_of_unity,
     primitive_root,
     primitive_roots,
@@ -62,6 +63,13 @@ def test_primitive_k_th_roots_of_unity(k: int, n: int) -> None:
 # @pytest.mark.parametrize("n", range(1, MAX_N))
 def test_ntt() -> None:
     assert ntt([1, 2], 257, 2**4) == [33, -31 % 257]
+    assert ntt([3, 4], 257, 2**4) == [67, -61 % 257]
+    assert ntt([-5 % 257, 10], 257, 2**4) == [155, -165 % 257]
+
     assert ntt([1, 2, 3, 4], 257, 2**2)[:2] == [56, 42]
     assert ntt([1, 2, 3, 4], 257, 2**2) == [56, 42, 97, 66]
     assert ntt([5, 6, 7, 8], 257, 2**2) == [139, 95, 52, 248]
+
+
+def test_ntt_multiply_polynomials() -> None:
+    assert ntt_multiply_polynomials([1, 2], [3, 4], 257, 2**4) == [155, -165 % 257]

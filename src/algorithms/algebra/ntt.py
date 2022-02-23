@@ -141,6 +141,13 @@ def ntt(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
     return seq
 
 
+def ntt_multiply_polynomials(
+    poly1: Sequence[int], poly2: Sequence[int], p: int, omega: int
+) -> Sequence[int]:
+    """Multiply two polynomials from X^(2^m) + 1 by using ntt"""
+    return [a * b % p for a, b in zip(ntt(poly1, p, omega), ntt(poly2, p, omega))]
+
+
 def ntt_r(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
     """Perform the ntt in the ring X^(2^m) + 1"""
     length = len(seq)
