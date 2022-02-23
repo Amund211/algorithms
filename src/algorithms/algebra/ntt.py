@@ -91,21 +91,25 @@ def ntt(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
         print(f"{seq=} {new_seq=}")
         # Length of the sequence we will fold this iteration
         fold_length = 2 ** (m - fold_count)
-        m_v = pow(omega, 2 ** (m - fold_count - 1) + 2**m, p)
-        p_v = pow(omega, 2 ** (m - fold_count - 1), p)
 
         # The length of the new folds we will create
         new_fold_length = fold_length // 2
 
-        print(f"{fold_length=} {new_fold_length=} {m_v=} {p_v=}")
+        print(f"{fold_length=} {new_fold_length=}")
 
         # Index into the current folds
         for fold_index in range(2**fold_count):
             print(f"---Iteration {fold_index=} ----------")
+            # Depending on the parity of the fold we want a factor sqrt(-1) in v
+            offset = 2 ** (m - 1) if fold_index % 2 else 0
+
+            m_v = pow(omega, 2 ** (m - fold_count - 1) + 2**m + offset, p)
+            p_v = pow(omega, 2 ** (m - fold_count - 1) + offset, p)
 
             m_offset = fold_index * fold_length
             p_offset = m_offset + new_fold_length
 
+            print(f"{m_v=} {p_v=}")
             print(f"{m_offset=} {p_offset=}")
             print(f"{m_offset=} : {m_offset + new_fold_length=}")
             print(f"{p_offset=} : {p_offset + new_fold_length=}")
@@ -159,8 +163,6 @@ def fold_right(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
         (seq[m_offset + i] + m_v * seq[m_offset + i + new_fold_length]) % p
         for i in range(new_fold_length)
     )
-
-
 
 
 """

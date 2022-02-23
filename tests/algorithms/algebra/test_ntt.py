@@ -62,5 +62,6 @@ def test_primitive_k_th_roots_of_unity(k: int, n: int) -> None:
 # @pytest.mark.parametrize("n", range(1, MAX_N))
 def test_ntt() -> None:
     assert ntt([1, 2], 257, 2**4) == [33, -31 % 257]
-    ntt([1, 2, 3, 4], 257, 2**2)[:2] == [56, 42]
-    print(ntt([1, 2, 3, 4], 257, 2**2))
+    assert ntt([1, 2, 3, 4], 257, 2**2)[:2] == [56, 42]
+    assert ntt([1, 2, 3, 4], 257, 2**2) == [56, 42, 97, 66]
+    assert ntt([5, 6, 7, 8], 257, 2**2) == [139, 95, 52, 248]
