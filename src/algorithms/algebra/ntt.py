@@ -180,8 +180,12 @@ def _intt_r(
         # Base case
         return seq
 
-    # Not quite the index, but has the same value % 2
-    new_index = index + (index % 2)
+    # The left index doubles at each layer
+    # 0
+    # 0   1
+    # 0 1 2 3
+    # 01234567
+    new_index = 2 * index
 
     left_fold = _intt_r(
         seq[:fold_length], p=p, omega=omega, m=m, depth=depth + 1, index=new_index
