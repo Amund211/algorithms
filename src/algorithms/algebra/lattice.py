@@ -1,17 +1,22 @@
 import numpy as np
 import numpy.linalg
+import numpy.typing as npt
 
-basis = [
+Coordinate = npt.NDArray[np.int64]
+Basis = list[Coordinate]
+
+basis: Basis = [
     np.array([1, 10]),
     np.array([1, 1]),
 ]
 
 
-def make_lattice_point(basis, coordinate):
-    return sum(c * b for c, b in zip(coordinate, basis))
+def make_lattice_point(basis: Basis, coordinate: Coordinate) -> Coordinate:
+    # Sum has a dumb type
+    return sum(c * b for c, b in zip(coordinate, basis, strict=True))  # type: ignore
 
 
-def reduce(basis, norm=2):
+def reduce(basis: Basis, norm: int = 2) -> Basis:
     assert len(basis) == 2
     assert norm == 2
     basis = sorted(basis, key=lambda vec: np.linalg.norm(vec, ord=norm), reverse=True)
