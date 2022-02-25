@@ -118,17 +118,6 @@ def ntt(seq: Sequence[int], p: int, omega: int) -> Sequence[int]:
     return seq
 
 
-def ntt_multiply_polynomials(
-    poly1: tuple[int, ...], poly2: tuple[int, ...], p: int, omega: int
-) -> tuple[int, ...]:
-    """Multiply two polynomials from X^(2^m) + 1 by using ntt"""
-    return tuple(
-        a * b % p
-        for a, b in zip(ntt(poly1, p, omega), ntt(poly2, p, omega), strict=True)
-    )
-
-
-# Make recursive version
 def ntt_r(seq: tuple[int, ...], p: int, omega: int) -> tuple[int, ...]:
     """Perform the ntt in the ring X^(2^m) + 1"""
     length = len(seq)
@@ -168,4 +157,67 @@ def _ntt_r(
 
     return _ntt_r(left_fold, p, omega, m=m, depth=depth + 1, index=index) + _ntt_r(
         right_fold, p, omega, m=m, depth=depth + 1, index=index + 1
+    )
+
+
+def intt_r(seq: tuple[int, ...], p: int, omega: int) -> tuple[int, ...]:
+    """Perform the inverse ntt in the ring X^(2^m) + 1"""
+    length = len(seq)
+    assert is_power_of_2(length), "Sequence length must be a power of 2"
+    m = int(math.log(length, 2))
+    assert 2**m == length
+
+    return _intt_r(seq, p, omega, m=m, depth=0, index=0)
+
+
+def _intt_r(
+    seq: tuple[int, ...], p: int, omega: int, m: int, depth: int, index: int
+) -> tuple[int, ...]:
+    """Actually perform the inverse ntt"""
+    fold_length = len(seq) // 2
+
+    if fold_length == 0:
+        # Base case
+        return seq
+
+    # Not quite the index, but has the same value % 2
+    new_index = index + (index % 2)
+
+    left_fold = _intt_r(
+        seq[:fold_length], p=p, omega=omega, m=m, depth=depth + 1, index=new_index
+    )
+    right_fold = _intt_r(
+        seq[fold_length:], p=p, omega=omega, m=m, depth=depth + 1, index=new_index + 1
+    )
+
+    # Depending on the parity of the fold we want a factor sqrt(-1) in v
+    # This is because of the sign difference in the two rings
+    # X^(2^(i+1)) v^2 ~ (X^(2^i) - v) x (X^(2^i) + v)
+    offset = 2 ** (m - 1) if index % 2 else 0
+
+    # v^-1 in our ring X^(2^i) - v^2
+    v_inv = pow(pow(omega, 2 ** (m - depth - 1) + offset, p), -1, p)
+
+    # 2^-1
+    two_inv = pow(2, -1, p)
+
+    return tuple(
+        two_inv * (b + g) % p for b, g in zip(left_fold, right_fold, strict=True)
+    ) + tuple(
+        two_inv * v_inv * (b - g) % p
+        for b, g in zip(left_fold, right_fold, strict=True)
+    )
+
+
+def ntt_multiply_polynomials(
+    poly1: tuple[int, ...], poly2: tuple[int, ...], p: int, omega: int
+) -> tuple[int, ...]:
+    """Multiply two polynomials from X^(2^m) + 1 by using ntt"""
+    return intt_r(
+        tuple(
+            a * b % p
+            for a, b in zip(ntt_r(poly1, p, omega), ntt_r(poly2, p, omega), strict=True)
+        ),
+        p=p,
+        omega=omega,
     )

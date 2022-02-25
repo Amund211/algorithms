@@ -6,6 +6,7 @@ from sympy.ntheory.residue_ntheory import is_primitive_root  # type: ignore
 from sympy.ntheory.residue_ntheory import primitive_root as sympy_primitive_root
 
 from algorithms.algebra.ntt import (
+    intt_r,
     is_coprime,
     is_prime,
     ntt,
@@ -72,15 +73,26 @@ NTT_CASES = (
 )
 
 
-@pytest.mark.parametrize("seq, p, omega, result", NTT_CASES)
-def test_ntt(seq: tuple[int], p: int, omega: int, result: tuple[int]) -> None:
-    assert ntt(seq=seq, p=p, omega=omega) == result
+@pytest.mark.parametrize("coefficients, p, omega, transformed", NTT_CASES)
+def test_ntt(
+    coefficients: tuple[int, ...], p: int, omega: int, transformed: tuple[int, ...]
+) -> None:
+    assert ntt(seq=coefficients, p=p, omega=omega) == transformed
 
 
-@pytest.mark.parametrize("seq, p, omega, result", NTT_CASES)
-def test_ntt_r(seq: tuple[int], p: int, omega: int, result: tuple[int]) -> None:
-    assert ntt_r(seq=seq, p=p, omega=omega) == result
+@pytest.mark.parametrize("coefficients, p, omega, transformed", NTT_CASES)
+def test_ntt_r(
+    coefficients: tuple[int, ...], p: int, omega: int, transformed: tuple[int, ...]
+) -> None:
+    assert ntt_r(seq=coefficients, p=p, omega=omega) == transformed
+
+
+@pytest.mark.parametrize("coefficients, p, omega, transformed", NTT_CASES)
+def test_intt_r(
+    coefficients: tuple[int, ...], p: int, omega: int, transformed: tuple[int, ...]
+) -> None:
+    assert intt_r(seq=transformed, p=p, omega=omega) == coefficients
 
 
 def test_ntt_multiply_polynomials() -> None:
-    assert ntt_multiply_polynomials((1, 2), (3, 4), 257, 2**4) == (155, -165 % 257)
+    assert ntt_multiply_polynomials((1, 2), (3, 4), 257, 2**4) == (-5 % 257, 10)
