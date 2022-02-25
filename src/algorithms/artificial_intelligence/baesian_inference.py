@@ -1,6 +1,6 @@
 from enum import Enum, unique
 from functools import partial
-from typing import Sequence, Mapping, TypeVar
+from typing import Mapping, Sequence, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -48,8 +48,9 @@ def forward(
         for old_state, probability_of_new_state in dynamic_model.items()
     )  # type: ignore
 
-    # P(X_{t+1} | e_{1:t+1}) = α P(e_{t+1} | X_{t+1}) ∑_{x_t} P(X_{t+1} | x_t) P(x_t | e_{1:t})
+    # P(X_{t+1} | e_{1:t+1}) = α P(e_{t+1} | X_{t+1}) ∑_{x_t} P(X_{t+1} | x_t) P(x_t | e_{1:t})  # noqa: E501
     non_normalized = P_etp1_given_Xtp1 * S
+
     normalized = non_normalized / non_normalized.sum()
 
     # Map the probabilities out to our format
@@ -73,11 +74,11 @@ def backward(
 
     assert len(p) == len(dynamic_model) == len(observation_model) > 0
 
-    # P(e_{k+1:t} | X_k) = ∑_{x_{k+1}} P(e_{k+1} | x_{k+1}) P(e_{k+2:t} | x_{k+1}) P(x_{k+1} | X_k)
+    # P(e_{k+1:t} | X_k) = ∑_{x_{k+1}} P(e_{k+1} | x_{k+1}) P(e_{k+2:t} | x_{k+1}) P(x_{k+1} | X_k)  # noqa: E501
 
     S: npt.NDArray[np.float64] = sum(
         # P(e_{k+1} | x_{k+1})
-        observation_model[old_state][evidence]
+        observation_model[old_state][evidence]  # type: ignore
         # P(e_{k+2:t} | x_{k+1})
         * p[old_state]
         # P(x_{k+1} | X_k)
@@ -86,7 +87,7 @@ def backward(
             dtype=np.float64,
         )
         for old_state, probability_of_new_state in dynamic_model.items()
-    )  # type: ignore
+    )
 
     # Map the probabilities out to our format
     return {state: probability for state, probability in zip(dynamic_model, S)}
@@ -153,7 +154,6 @@ def smoothing(
     )
 
     return forward_messages, backward_messages
-
 
 
 @unique
@@ -223,7 +223,8 @@ def task_2_2() -> None:
     )
     # mypy is dumb and doesn't understand the index type
     print(
-        f"Probability of rain after observed (umbrella, umbrella): {messages_list[-1][UmbrellaState.RAIN]}"  # type: ignore
+        "Probability of rain after observed (umbrella, umbrella): "
+        f"{messages_list[-1][UmbrellaState.RAIN]}"  # type: ignore
     )
 
     evidences = [
@@ -237,7 +238,9 @@ def task_2_2() -> None:
 
     # mypy is dumb and doesn't understand the index type
     print(
-        f"Probability of rain after observed (umbrella, umbrella, no umbrella, umbrella, umbrella): {messages_list[-1][UmbrellaState.RAIN]}"  # type: ignore
+        "Probability of rain after observed "
+        "(umbrella, umbrella, no umbrella, umbrella, umbrella): "
+        f"{messages_list[-1][UmbrellaState.RAIN]}"  # type: ignore
     )
     print("Normalized forward messages:")
     print(f"\t{'(initial)'.ljust(12)} -> {INITIAL_UMBRELLA_STATE}")
@@ -249,12 +252,14 @@ def task_2_3() -> None:
     forward_messages, backward_messages = smoothing_umbrella(
         [UmbrellaEvidence.UMBRELLA, UmbrellaEvidence.UMBRELLA]
     )
-    print(np.array(list(forward_messages[0].values())) * np.array(list(backward_messages[0].values())))
+    print(
+        np.array(list(forward_messages[0].values()))
+        * np.array(list(backward_messages[0].values()))
+    )
 
     # Ran out of time for this task
 
     return
-
 
 
 def main() -> None:
