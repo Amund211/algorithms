@@ -2,7 +2,7 @@ import itertools
 from typing import Iterable
 
 import pytest
-from sympy.ntheory.residue_ntheory import is_primitive_root
+from sympy.ntheory.residue_ntheory import is_primitive_root  # type: ignore
 from sympy.ntheory.residue_ntheory import primitive_root as sympy_primitive_root
 
 from algorithms.algebra.ntt import (
@@ -41,7 +41,8 @@ def test_primitive_root(n: int) -> None:
     assert primitive_root(n) == sympy_primitive_root(n)
 
 
-def filter_k_th_root(k: int, n: int):
+def filter_k_th_root(k: int, n: int) -> bool:
+    """Filter valid inputs for k-th root of Z_n"""
     return k <= n - 1 and (n - 1) % k == 0
 
 
