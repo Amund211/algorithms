@@ -225,3 +225,34 @@ def ntt_multiply_polynomials(
         p=p,
         omega=omega,
     )
+
+
+def schoolbook_multiply_polynomials(
+    poly1: tuple[int, ...], poly2: tuple[int, ...], p: int
+) -> tuple[int, ...]:
+    """Naive n^2 polynomial multiplication in X^(2^m) + 1"""
+    length = len(poly1)
+    assert len(poly2) == length, "Polynomials must have the same length"
+    assert is_power_of_2(length), "Sequence length must be a power of 2"
+    m = int(math.log(length, 2))
+    assert 2**m == length
+
+    result = [0] * length
+    min_power = 0
+    for power in range(2 * length - 1):
+        if power >= length:
+            # Reduce mod X^(2^m) + 1
+            coefficient = -1
+            index = power - length
+            min_power = index + 1
+        else:
+            coefficient = 1
+            index = power
+
+        for left_amount in range(min_power, power + 1 - min_power):
+            result[index] += (
+                coefficient * poly1[left_amount] * poly2[power - left_amount]
+            )
+            result[index] %= p
+
+    return tuple(result)

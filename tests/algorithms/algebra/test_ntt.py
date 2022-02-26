@@ -15,6 +15,7 @@ from algorithms.algebra.ntt import (
     primitive_k_th_roots_of_unity,
     primitive_root,
     primitive_roots,
+    schoolbook_multiply_polynomials,
 )
 
 MAX_K = MAX_N = 11
@@ -94,5 +95,29 @@ def test_intt_r(
     assert intt_r(seq=transformed, p=p, omega=omega) == coefficients
 
 
-def test_ntt_multiply_polynomials() -> None:
-    assert ntt_multiply_polynomials((1, 2), (3, 4), 257, 2**4) == (-5 % 257, 10)
+POLY_MULT_CASES = (
+    ((1, 2), (3, 4), 257, 2**4, (-5 % 257, 10)),
+    ((1, 2, 3, 4), (5, 6, 7, 8), 257, 2**2, (201, 221, 2, 60)),
+)
+
+
+@pytest.mark.parametrize("poly1, poly2, p, omega, result", POLY_MULT_CASES)
+def test_ntt_multiply_polynomials(
+    poly1: tuple[int, ...],
+    poly2: tuple[int, ...],
+    p: int,
+    omega: int,
+    result: tuple[int, ...],
+) -> None:
+    assert ntt_multiply_polynomials(poly1, poly2, p, omega) == result
+
+
+@pytest.mark.parametrize("poly1, poly2, p, omega, result", POLY_MULT_CASES)
+def test_schoolbook_multiply_polynomials(
+    poly1: tuple[int, ...],
+    poly2: tuple[int, ...],
+    p: int,
+    omega: int,
+    result: tuple[int, ...],
+) -> None:
+    assert schoolbook_multiply_polynomials(poly1, poly2, p) == result
