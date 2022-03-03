@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from algorithms.algebra.lll import Vector, gram_schmidt, lll
+from algorithms.algebra.lll import gram_schmidt, lll
+from algorithms.utils import Vector
 
 GRAM_SCHMIDT_CASES = (
     ((Vector([3, 1]), Vector([2, 2])), (Vector([3, 1]), Vector([-2 / 5, 6 / 5]))),
