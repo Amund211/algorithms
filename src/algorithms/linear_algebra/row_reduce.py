@@ -2,10 +2,12 @@ import numpy as np
 import numpy.typing as npt
 
 
-def row_reduce_mod_2(matrix: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]:
+def row_reduce_mod_2(
+    matrix: npt.NDArray[np.int32],
+) -> tuple[npt.NDArray[np.int32], tuple[int, ...]]:
     """Reduce the given matrix over Z_2 to echelon form in place"""
     assert len(matrix.shape) == 2
-    non_pivot_columns: list[int] = []
+    pivot_columns: list[int] = []
 
     # Index where the next source row will be moved
     free_row = 0
@@ -23,7 +25,7 @@ def row_reduce_mod_2(matrix: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]:
         if source_row != free_row:
             matrix[[source_row, free_row], :] = matrix[[free_row, source_row], :]
 
-        non_pivot_columns.append(column)
+        pivot_columns.append(column)
 
         for other_row in range(free_row + 1, matrix.shape[0]):
             # Eliminate this column from this row
@@ -33,7 +35,7 @@ def row_reduce_mod_2(matrix: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]:
 
         free_row += 1
 
-    for column in filter(lambda col: col != 0, non_pivot_columns):
+    for column in filter(lambda col: col != 0, pivot_columns):
         source_row = next(i for i in range(column, -1, -1) if matrix[i, column] == 1)
 
         for other_row in range(source_row):
@@ -42,4 +44,4 @@ def row_reduce_mod_2(matrix: npt.NDArray[np.int32]) -> npt.NDArray[np.int32]:
                 matrix[other_row, :] += matrix[source_row, :]
                 matrix[other_row, :] %= 2
 
-    return matrix
+    return matrix, tuple(pivot_columns)
