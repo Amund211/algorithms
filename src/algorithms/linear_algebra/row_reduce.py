@@ -7,6 +7,8 @@ def row_reduce_mod_2(
 ) -> tuple[npt.NDArray[np.int32], tuple[int, ...]]:
     """Reduce the given matrix over Z_2 to echelon form out of place"""
     assert len(matrix.shape) == 2
+    assert (matrix % 2 == matrix).all()
+
     pivot_columns: list[int] = []
 
     # Don't mutate the input
