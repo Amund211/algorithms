@@ -27,6 +27,35 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     return smooth_factor(n, suggest_r(n), primes)
 
 
+def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
+    """Compute the factorization of n=pq using a quadratic sieve"""
+
+    def SuggestR:
+        def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
+            self.n = n
+            self.primes = primes
+            self.width = width
+
+        def __iter__(self) -> None:
+            center = int(math.sqrt(n))
+            left = max(center - width, 1)  # inclusive
+            right = max(center + width, n)  # non-inclusive
+
+            assert right > left
+
+            indicies = np.array(right - left, dtype=np.float32)
+
+            # Compute the sum log p for each value in [sqrt(n) - width, ...]
+            # Add the indexes into a max-heap
+            self.width *= 2
+
+        def __next__(self) -> None:
+            # Pop the next element from the max-heap
+            pass
+
+    return smooth_factor(n, SuggestR(n, width=len(primes), primes=primes), primes)
+
+
 def smooth_factor(
     n: int, r_suggestions: Iterable[int], primes: tuple[int, ...]
 ) -> tuple[int, int]:
@@ -51,9 +80,16 @@ def smooth_factor(
         r_index = 0
         seen_rs: set[int] = set()
 
+        # Set to True if we ran out of suggestions
+        out_of_suggestions = False
+
         # Look for rs until we have L+1
         while r_index < L + 1:
-            r = next(r_iterator)
+            try:
+                r = next(r_iterator)
+            except StopIteration:
+                out_of_suggestions = True
+                break
 
             # Only consider unique rs
             if r in seen_rs:
@@ -76,6 +112,10 @@ def smooth_factor(
 
             r_index += 1
 
+        # Restart the iterable to get more rs
+        if out_of_suggestions:
+            continue
+
         # Find a linear combination of the prime powers from our rs
         # with all even powers (square)
 
@@ -84,6 +124,12 @@ def smooth_factor(
 
         # Components that we can choose freely
         non_pivot_columns = set(range(L + 1)) - set(pivot_columns)
+
+        # TODO: evaluate every vector in the null-space by looping over
+        # itertools.product("[0, 1] * len(non_pivot)") to find the coefficients
+        # Remember a check that coeff != 0_vec
+
+        # TODO: Put stuff into functions so it is bearable to work with
 
         # Choose an arbitrary vector from the kernel
         # Set the free variables to 1, so we're sure we don't get the 0-vector
