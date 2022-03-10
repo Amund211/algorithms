@@ -8,43 +8,12 @@ import numpy.linalg
 import numpy.typing as npt
 
 from algorithms.linear_algebra.row_reduce import row_reduce_mod_2
-
-
-class FactorizationError(ValueError):
-    pass
+from algorithms.number_theory.primes import FactorizationError, factor_into
 
 
 def product_mod_n(iterable: Iterable[int], n: int, *, initial: int = 1) -> int:
     """Compute the product of the elements of the iterable mod n"""
     return functools.reduce(lambda a, b: (a * b) % n, iterable, initial % n)
-
-
-def factor(r: int, primes: tuple[int, ...]) -> tuple[int, ...]:
-    """
-    Return the powers of `primes` in r
-
-    Raise FactorizationError if r can't be factorized into `primes`
-    """
-
-    assert r != 0, "Cannot factor 0"
-
-    factor = r
-    powers = [0] * len(primes)
-
-    for i, p in enumerate(primes):
-        if factor == 1:
-            break
-
-        while factor % p == 0:
-            powers[i] += 1
-            factor //= p
-
-    if factor != 1:
-        raise FactorizationError(
-            "{r} has a factor {factor} not accounted for in primes"
-        )
-
-    return tuple(powers)
 
 
 def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
@@ -78,7 +47,7 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
         seen_rs.add(r)
 
         try:
-            powers = factor(pow(r, 2, n), primes)
+            powers = factor_into(pow(r, 2, n), primes)
         except FactorizationError:
             # r^2 doesn't factor into `primes` - try again
             continue
