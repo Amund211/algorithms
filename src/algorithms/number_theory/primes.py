@@ -1,3 +1,28 @@
+import numpy as np
+import numpy.typing as npt
+
+
+def sieve_of_eratosthenes(n: int) -> tuple[int, ...]:
+    """Return the primes in [1, n]"""
+    assert n >= 1
+
+    remaining_primes: npt.NDArray[np.int32] = np.ones(n, dtype=np.int32)
+    remaining_primes[0] = 0  # 1 is not prime
+
+    index = 0
+    while index < n:
+        if remaining_primes[index] == 0:
+            index += 1
+            continue
+
+        # The number at this index is prime - eliminate all multiples of it
+        p = index + 1
+        remaining_primes[p**2 - 1 :: p] = 0
+        index += 1
+
+    return tuple(int(index) + 1 for index in np.where(remaining_primes)[0])
+
+
 class FactorizationError(ValueError):
     pass
 

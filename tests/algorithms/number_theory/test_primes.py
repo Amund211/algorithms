@@ -1,7 +1,24 @@
 import pytest
+import sympy  # type: ignore
 
-from algorithms.number_theory.primes import FactorizationError, factor_into
+from algorithms.number_theory.primes import (
+    FactorizationError,
+    factor_into,
+    sieve_of_eratosthenes,
+)
 from tests.algorithms.constants import SMALL_PRIMES
+
+PRIME_SIEVE_CASES = tuple(range(1, 100))
+
+
+@pytest.mark.parametrize("n", PRIME_SIEVE_CASES)
+def test_sieve_of_eratosthenes(n: int) -> None:
+    assert sieve_of_eratosthenes(n) == tuple(sympy.sieve.primerange(n + 1))
+
+
+def test_sieve_of_eratosthenes_inclusive() -> None:
+    assert 13 in sieve_of_eratosthenes(13)
+
 
 FACTOR_INTO_CASES = (
     (1, (), ()),
