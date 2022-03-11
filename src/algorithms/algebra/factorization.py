@@ -49,6 +49,13 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
 def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     """Compute the factorization of n=pq using a quadratic sieve"""
 
+    """
+    https://en.wikipedia.org/wiki/Quadratic_sieve
+    https://en.wikipedia.org/wiki/Dixon%27s_factorization_method  # Rename smooth factor to dixon
+    https://mathworld.wolfram.com/QuadraticSieve.html
+    https://en.wikipedia.org/wiki/Tonelli%E2%80%93Shanks_algorithm  # Finding square roots mod p
+    """
+
     class QuadraticSieveSample:
         def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
             self.n = n
