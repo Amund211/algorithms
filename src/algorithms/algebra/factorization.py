@@ -1,7 +1,7 @@
 import functools
 import math
 import random
-from typing import Iterable
+from typing import Iterable, Iterator, Optional, Protocol
 
 import numpy as np
 import numpy.linalg
@@ -9,6 +9,14 @@ import numpy.typing as npt
 
 from algorithms.linear_algebra.row_reduce import row_reduce_mod_2
 from algorithms.number_theory.primes import FactorizationError, factor_into
+
+
+class SuggestR(Iterable[int], Protocol):
+    def restart(self) -> None:
+        ...
+
+    def increase_search_space(self) -> None:
+        ...
 
 
 def product_mod_n(iterable: Iterable[int], n: int, *, initial: int = 1) -> int:
@@ -19,41 +27,89 @@ def product_mod_n(iterable: Iterable[int], n: int, *, initial: int = 1) -> int:
 def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     """Compute the factorization of n=pq using index calculus"""
 
-    def suggest_r(n: int) -> Iterable[int]:
-        """Randomly sample integers in Z_n"""
-        while True:
-            yield random.randrange(1, n)
+    class RandomSample:
+        def __init__(self, n: int) -> None:
+            self.n = n
 
-    return smooth_factor(n, suggest_r(n), primes)
+        def restart(self) -> None:
+            pass
+
+        def increase_search_space(self) -> None:
+            raise ValueError("Can't increase seach space of random sample")
+
+        def __iter__(self) -> Iterator[int]:
+            return self
+
+        def __next__(self) -> int:
+            return random.randrange(1, self.n)
+
+    return smooth_factor(n, RandomSample(n), primes)
 
 
 def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     """Compute the factorization of n=pq using a quadratic sieve"""
 
-    def SuggestR:
+    class QuadraticSieveSample:
         def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
             self.n = n
             self.primes = primes
             self.width = width
+            self.found_rs: Optional[tuple[int]] = None
+            self.shuffled_rs: Optional[Iterator[int]] = None
 
-        def __iter__(self) -> None:
-            center = int(math.sqrt(n))
-            left = max(center - width, 1)  # inclusive
-            right = max(center + width, n)  # non-inclusive
+        def restart(self) -> None:
+            center = math.ceil(math.sqrt(n))
+            left = max(center - self.width, 1)  # inclusive
+            right = max(center + self.width, n)  # non-inclusive
 
             assert right > left
 
-            indicies = np.array(right - left, dtype=np.float32)
+            # Two versions:
+            # 1:
+            #   Compute x^2 - n (mod p) for each x in [left, right]
+            #   Solve x^2 = n (mod p) for each p
+            #   Divide through by p for each (a + kp) and (b + kp)
+            #   Return those with value 1 remaining
+            # 2:
+            #   Solve x^2 = n (mod p) for each p
+            #   Add log p to each (a + kp) and (b + kp)
+            #   Return those with high sum of log - threshold?
 
-            # Compute the sum log p for each value in [sqrt(n) - width, ...]
-            # Add the indexes into a max-heap
+            # 1
+            remainder: npt.NDArray[np.int32] = np.array(right - left, dtype=np.int32)
+            # 2
+            indicies: npt.NDArray[np.float32] = np.array(right - left, dtype=np.float32)
+
+        def increase_search_space(self) -> None:
+            if self.width > math.sqrt(n):
+                raise ValueError("Search space is already at max")
+
             self.width *= 2
 
-        def __next__(self) -> None:
-            # Pop the next element from the max-heap
-            pass
+        def __iter__(self) -> Iterator[int]:
+            if self.found_rs is None:
+                self.restart()
+                assert self.found_rs is not None
 
-    return smooth_factor(n, SuggestR(n, width=len(primes), primes=primes), primes)
+            shuffled = list(self.found_rs)
+            random.shuffle(shuffled)
+            self.shuffled_rs = iter(shuffled)
+
+            return self
+
+        def __next__(self) -> int:
+            if self.shuffled_rs is None:
+                raise RuntimeError("Must call iter before next")
+
+            return next(self.shuffled_rs)
+
+    # Include only primes where n is a quadratic residue, so that we can solve
+    # x^2 = n (mod p)
+    primes = tuple(filter(lambda p: p == 2 or pow(n, (p - 1) // 2, p) == 1, primes))
+
+    return smooth_factor(
+        n, QuadraticSieveSample(n, width=len(primes), primes=primes), primes
+    )
 
 
 def smooth_factor(
