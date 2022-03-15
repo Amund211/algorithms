@@ -1,4 +1,5 @@
 import functools
+import itertools
 import math
 import random
 from typing import Iterable, Iterator, Optional, Protocol
@@ -8,13 +9,15 @@ import numpy.linalg
 import numpy.typing as npt
 
 from algorithms.linear_algebra.row_reduce import row_reduce_mod_2
+from algorithms.number_theory.modular_arithmetic import tonelli_shanks
 from algorithms.number_theory.primes import FactorizationError, factor_into
 
 
-class SuggestR(Iterable[int], Protocol):
-    def restart(self) -> None:
-        ...
+class BadRootsError(ValueError):
+    ...
 
+
+class SuggestR(Iterable[int], Protocol):
     def increase_search_space(self) -> None:
         ...
 
@@ -31,9 +34,6 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
         def __init__(self, n: int) -> None:
             self.n = n
 
-        def restart(self) -> None:
-            pass
-
         def increase_search_space(self) -> None:
             raise ValueError("Can't increase seach space of random sample")
 
@@ -43,55 +43,56 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
         def __next__(self) -> int:
             return random.randrange(1, self.n)
 
-    return smooth_factor(n, RandomSample(n), primes)
+    return dixon_factorization(n, RandomSample(n), primes)
 
 
 def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     """Compute the factorization of n=pq using a quadratic sieve"""
 
-    """
-    https://en.wikipedia.org/wiki/Quadratic_sieve
-    https://en.wikipedia.org/wiki/Dixon%27s_factorization_method  # Rename smooth factor to dixon
-    https://mathworld.wolfram.com/QuadraticSieve.html
-    https://en.wikipedia.org/wiki/Tonelli%E2%80%93Shanks_algorithm  # Finding square roots mod p
-    """
-
     class QuadraticSieveSample:
         def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
             self.n = n
+            assert n < 2**64
             self.primes = primes
             self.width = width
-            self.found_rs: Optional[tuple[int]] = None
+            self.found_rs: Optional[tuple[int, ...]] = None
             self.shuffled_rs: Optional[Iterator[int]] = None
 
         def restart(self) -> None:
-            center = math.ceil(math.sqrt(n))
-            left = max(center - self.width, 1)  # inclusive
-            right = max(center + self.width, n)  # non-inclusive
+            left = math.ceil(math.sqrt(n))
+            right = min(left + self.width, n)  # non-inclusive
 
             assert right > left
 
-            # Two versions:
-            # 1:
-            #   Compute x^2 - n (mod p) for each x in [left, right]
-            #   Solve x^2 = n (mod p) for each p
-            #   Divide through by p for each (a + kp) and (b + kp)
-            #   Return those with value 1 remaining
-            # 2:
-            #   Solve x^2 = n (mod p) for each p
-            #   Add log p to each (a + kp) and (b + kp)
-            #   Return those with high sum of log - threshold?
+            # The plan
+            # Compute x^2 - n (mod p) for each x in [left, right]
+            # Solve x^2 = n (mod p) for each p
+            # Divide through by p for each (a + kp) and (b + kp)
+            # The indicies with 1 remaining are square roots of a smooth number
 
-            # 1
-            remainder: npt.NDArray[np.int32] = np.array(right - left, dtype=np.int32)
-            # 2
-            indicies: npt.NDArray[np.float32] = np.array(right - left, dtype=np.float32)
+            remainder: npt.NDArray[np.int32] = (
+                np.arange(left, right, dtype=np.int64) ** 2 - n
+            )
+            for p in self.primes:
+                if p == 2:
+                    base_root = 1
+                else:
+                    base_root = tonelli_shanks(n, p)
+
+                for root in (base_root, -base_root) if p != 2 else (base_root,):
+                    remainder[root - left - p * ((root - left) // p) :: p] //= p
+
+            self.found_rs = tuple(map(int, np.where(remainder == 1)[0] + left))
+            print(f"Found {len(self.found_rs)} rs")
 
         def increase_search_space(self) -> None:
-            if self.width > math.sqrt(n):
+            if self.width > n:
                 raise ValueError("Search space is already at max")
 
             self.width *= 2
+            print(f"Increasing search space to {self.width}")
+            self.found_rs = None
+            self.shuffled_rs = None
 
         def __iter__(self) -> Iterator[int]:
             if self.found_rs is None:
@@ -113,14 +114,15 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     # Include only primes where n is a quadratic residue, so that we can solve
     # x^2 = n (mod p)
     primes = tuple(filter(lambda p: p == 2 or pow(n, (p - 1) // 2, p) == 1, primes))
+    print(f"Using {len(primes)} primes")
 
-    return smooth_factor(
+    return dixon_factorization(
         n, QuadraticSieveSample(n, width=len(primes), primes=primes), primes
     )
 
 
-def smooth_factor(
-    n: int, r_suggestions: Iterable[int], primes: tuple[int, ...]
+def dixon_factorization(
+    n: int, r_suggestions: SuggestR, primes: tuple[int, ...]
 ) -> tuple[int, int]:
     """Compute the factorization of n=pq using smooth numbers"""
 
@@ -177,31 +179,66 @@ def smooth_factor(
 
         # Restart the iterable to get more rs
         if out_of_suggestions:
+            r_suggestions.increase_search_space()
             continue
 
-        # Find a linear combination of the prime powers from our rs
-        # with all even powers (square)
+        try:
+            p, q = _compute_dixon_factorization(n, tuple(r_list), powers_matrix, primes)
+        except BadRootsError:
+            # Try again
+            continue
+        else:
+            return p, q
 
-        # Do gaussian elimination to get row-reduced echelon form
-        reduced, pivot_columns = row_reduce_mod_2(powers_matrix % 2)
 
-        # Components that we can choose freely
-        non_pivot_columns = set(range(L + 1)) - set(pivot_columns)
+def _compute_dixon_factorization(
+    n: int,
+    r_list: tuple[int, ...],
+    powers_matrix: npt.NDArray[np.int32],
+    primes: tuple[int, ...],
+) -> tuple[int, int]:
+    """
+    Find products of r^2 that are squares of small primes, and use them to factor n
 
-        # TODO: evaluate every vector in the null-space by looping over
-        # itertools.product("[0, 1] * len(non_pivot)") to find the coefficients
-        # Remember a check that coeff != 0_vec
+    Raise BadRootsError if none of the products give useful roots
+    """
+    L = len(primes)
+    assert powers_matrix.shape == (L, L + 1)
 
-        # TODO: Put stuff into functions so it is bearable to work with
+    # Do gaussian elimination to get row-reduced echelon form
+    reduced, pivot_columns = row_reduce_mod_2(powers_matrix % 2)
 
-        # Choose an arbitrary vector from the kernel
-        # Set the free variables to 1, so we're sure we don't get the 0-vector
+    # Components that we can choose freely
+    non_pivot_columns = set(range(L + 1)) - set(pivot_columns)
+
+    # Consider every vector in the null-space
+    for non_pivot_values in itertools.product(
+        *((0, 1) for _ in range(len(non_pivot_columns)))
+    ):
+        non_pivot_mapping = {
+            index: value for index, value in zip(non_pivot_columns, non_pivot_values)
+        }
+
+        # Sum of all the non-pivot columns in a row
+        row_sum = {
+            row: sum(
+                non_pivot_mapping[column] * reduced[row, column]
+                for column in non_pivot_columns
+            )
+            for row in range(L)
+        }
+
         coefficients = tuple(
-            1 if column in non_pivot_columns  # Set the free variables to 1
+            # Set the free variables
+            non_pivot_mapping[column] if column in non_pivot_columns
             # Set the pivot columns so that each row sums to 0
-            else (sum(reduced[pivot_columns.index(column), :]) - 1) % 2
+            else row_sum[pivot_columns.index(column)]
             for column in range(L + 1)
         )
+
+        if not any(powers_matrix @ coefficients):
+            # Check that the resulting number is not 1
+            continue
 
         # The product of r_j^a_j
         x = product_mod_n(
@@ -236,3 +273,5 @@ def smooth_factor(
             return (p2, p1)
 
         return (p1, p2)
+
+    raise BadRootsError("Bad pair of roots")
