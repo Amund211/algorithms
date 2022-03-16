@@ -19,6 +19,7 @@ def test_index_calculus(p: int, q: int, primes: tuple[int, ...]) -> None:
 
 
 def test_quadratic_sieve() -> None:
+    # Only 3 numbers smooth wrt factor base (2, 17, 23, 29) (primes where n is a^2)
     p, q = 103, 149
     assert quadratic_sieve(p * q, sieve_of_eratosthenes(30)) == (p, q)
 
@@ -29,4 +30,8 @@ def test_quadratic_sieve() -> None:
     assert quadratic_sieve(p * q, sieve_of_eratosthenes(1000)) == (p, q)
 
     p, q = 39916801, 479001599
+    assert quadratic_sieve(p * q, sieve_of_eratosthenes(2000)) == (p, q)
+
+    # Close to the 64-bit limit on n
+    p, q = 2028156391, 3458934959
     assert quadratic_sieve(p * q, sieve_of_eratosthenes(2000)) == (p, q)
