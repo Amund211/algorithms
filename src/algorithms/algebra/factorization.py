@@ -182,19 +182,10 @@ def dixon_factorization(
                 continue
 
             # If we have at least 2 rs, even though we are not guaranteed linear
-            # dependence, we may have gotten lucky
-            # As a hack, just add 1 as the remaining rs. The null-space will get big,
-            # but we ignore any resulting product that equals 1
-
-            # If we add too many empty columns, searching the null-space will be slow
-            if L + 1 - r_index > 8:
-                continue
-
-            for i in range(r_index, len(r_list)):
-                r_list[i] = 1
-
-            # Add the factorization of 1 to all remaining columns
-            powers_matrix[:, r_index:] = 0
+            # dependence, we may get lucky
+            # We send just the rs we have found
+            r_list = r_list[:r_index]
+            powers_matrix = powers_matrix[:, :r_index]
 
         try:
             p, q = _compute_dixon_factorization(n, tuple(r_list), powers_matrix, primes)
@@ -217,13 +208,15 @@ def _compute_dixon_factorization(
     Raise BadRootsError if none of the products give useful roots
     """
     L = len(primes)
-    assert powers_matrix.shape == (L, L + 1)
+    amt_rs = powers_matrix.shape[1]
+    assert powers_matrix.shape[0] == L
+    assert amt_rs > 1
 
     # Do gaussian elimination to get row-reduced echelon form
     reduced, pivot_columns = row_reduce_mod_2(powers_matrix % 2)
 
     # Components that we can choose freely
-    non_pivot_columns = set(range(L + 1)) - set(pivot_columns)
+    non_pivot_columns = set(range(amt_rs)) - set(pivot_columns)
 
     # Consider every vector in the null-space
     for non_pivot_values in itertools.product(
@@ -247,8 +240,17 @@ def _compute_dixon_factorization(
             non_pivot_mapping[column] if column in non_pivot_columns
             # Set the pivot columns so that each row sums to 0
             else row_sum[pivot_columns.index(column)]
-            for column in range(L + 1)
+            for column in range(amt_rs)
         )
+
+        if amt_rs >= L:
+            # We are guaranteed a solution Ax = 0 (mod 2)
+            assert not any((powers_matrix @ coefficients) % 2)
+        else:
+            # We are not guaranteed a solution Ax = 0 (mod 2)
+            # Skip this combination if it is not in the null space mod 2
+            if any((powers_matrix @ coefficients) % 2):
+                continue
 
         if not any(powers_matrix @ coefficients):
             # Check that the resulting number is not 1
