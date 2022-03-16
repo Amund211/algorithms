@@ -44,6 +44,8 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
 def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     """Compute the factorization of n=pq using a quadratic sieve"""
 
+    # TODO: compute smoothness bound and sieve primes
+
     class QuadraticSieveSample:
         def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
             self.n = n
