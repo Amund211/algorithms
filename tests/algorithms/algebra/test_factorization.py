@@ -49,6 +49,9 @@ def test_index_calculus(p: int, q: int, primes: tuple[int, ...]) -> None:
 
 
 def test_quadratic_sieve() -> None:
+    p, q = 103, 149
+    assert quadratic_sieve(p * q, sieve_of_eratosthenes(30)) == (p, q)
+
     p, q = 7907, 7919
     assert quadratic_sieve(p * q, sieve_of_eratosthenes(1000)) == (p, q)
 

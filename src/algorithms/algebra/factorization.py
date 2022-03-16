@@ -17,7 +17,7 @@ class BadRootsError(ValueError):
     ...
 
 
-class SuggestR(Iterable[int], Protocol):
+class SuggestR(Iterable[tuple[int, int]], Protocol):
     def increase_search_space(self) -> None:
         ...
 
@@ -37,11 +37,12 @@ def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
         def increase_search_space(self) -> None:
             raise ValueError("Can't increase seach space of random sample")
 
-        def __iter__(self) -> Iterator[int]:
+        def __iter__(self) -> Iterator[tuple[int, int]]:
             return self
 
-        def __next__(self) -> int:
-            return random.randrange(1, self.n)
+        def __next__(self) -> tuple[int, int]:
+            r = random.randrange(2, self.n)
+            return r, pow(r, 2, self.n)
 
     return dixon_factorization(n, RandomSample(n), primes)
 
@@ -94,7 +95,7 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
             self.found_rs = None
             self.shuffled_rs = None
 
-        def __iter__(self) -> Iterator[int]:
+        def __iter__(self) -> Iterator[tuple[int, int]]:
             if self.found_rs is None:
                 self.restart()
                 assert self.found_rs is not None
@@ -105,11 +106,12 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
 
             return self
 
-        def __next__(self) -> int:
+        def __next__(self) -> tuple[int, int]:
             if self.shuffled_rs is None:
                 raise RuntimeError("Must call iter before next")
 
-            return next(self.shuffled_rs)
+            r = next(self.shuffled_rs)
+            return r, r**2 - self.n
 
     # Include only primes where n is a quadratic residue, so that we can solve
     # x^2 = n (mod p)
@@ -151,7 +153,7 @@ def dixon_factorization(
         # Look for rs until we have L+1
         while r_index < L + 1:
             try:
-                r = next(r_iterator)
+                r, r_squared = next(r_iterator)
             except StopIteration:
                 out_of_suggestions = True
                 break
@@ -167,7 +169,7 @@ def dixon_factorization(
             seen_rs.add(r)
 
             try:
-                powers = factor_into(pow(r, 2, n), primes)
+                powers = factor_into(r_squared, primes)
             except FactorizationError:
                 # r^2 doesn't factor into `primes` - try again
                 continue
@@ -177,10 +179,28 @@ def dixon_factorization(
 
             r_index += 1
 
-        # Restart the iterable to get more rs
         if out_of_suggestions:
+            # Restart the iterable to get more rs
             r_suggestions.increase_search_space()
-            continue
+
+            # If we don't have more than 1 r, there is no chance of factoring
+            if r_index <= 1:
+                continue
+
+            # If we have at least 2 rs, even though we are not guaranteed linear
+            # dependence, we may have gotten lucky
+            # As a hack, just add 1 as the remaining rs. The null-space will get big,
+            # but we ignore any resulting product that equals 1
+
+            # If we add too many empty columns, searching the null-space will be slow
+            if L + 1 - r_index > 8:
+                continue
+
+            for i in range(r_index, len(r_list)):
+                r_list[i] = 1
+
+            # Add the factorization of 1 to all remaining columns
+            powers_matrix[:, r_index:] = 0
 
         try:
             p, q = _compute_dixon_factorization(n, tuple(r_list), powers_matrix, primes)
