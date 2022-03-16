@@ -47,7 +47,7 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
     class QuadraticSieveSample:
         def __init__(self, n: int, width: int, primes: tuple[int, ...]) -> None:
             self.n = n
-            assert n < 2**64
+            assert n < 2**63
             self.primes = primes
             self.width = width
             self.found_rs: Optional[tuple[int, ...]] = None
@@ -65,7 +65,7 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
             # Divide through by p for each (a + kp) and (b + kp)
             # The indicies with 1 remaining are square roots of a smooth number
 
-            remainder: npt.NDArray[np.int32] = (
+            remainder: npt.NDArray[np.int64] = (
                 np.arange(left, right, dtype=np.int64) ** 2 - n
             )
             for p in self.primes:
@@ -81,7 +81,10 @@ def quadratic_sieve(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
             print(f"Found {len(self.found_rs)} rs")
 
         def increase_search_space(self) -> None:
-            if self.width > n:
+            if (
+                self.width > self.n
+                or (math.ceil(math.sqrt(self.n)) + self.width) ** 2 - n > 2**63
+            ):
                 raise ValueError("Search space is already at max")
 
             self.width *= 2
