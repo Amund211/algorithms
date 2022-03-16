@@ -1,4 +1,11 @@
+import functools
 import itertools
+from typing import Iterable
+
+
+def product_mod_n(iterable: Iterable[int], n: int, *, initial: int = 1) -> int:
+    """Compute the product of the elements of the iterable mod n"""
+    return functools.reduce(lambda a, b: (a * b) % n, iterable, initial % n)
 
 
 def tonelli_shanks(n: int, p: int) -> int:

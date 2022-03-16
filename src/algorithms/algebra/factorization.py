@@ -1,4 +1,3 @@
-import functools
 import itertools
 import math
 import random
@@ -9,7 +8,7 @@ import numpy.linalg
 import numpy.typing as npt
 
 from algorithms.linear_algebra.row_reduce import row_reduce_mod_2
-from algorithms.number_theory.modular_arithmetic import tonelli_shanks
+from algorithms.number_theory.modular_arithmetic import product_mod_n, tonelli_shanks
 from algorithms.number_theory.primes import FactorizationError, factor_into
 
 
@@ -20,11 +19,6 @@ class BadRootsError(ValueError):
 class SuggestR(Iterable[tuple[int, int]], Protocol):
     def increase_search_space(self) -> None:
         ...
-
-
-def product_mod_n(iterable: Iterable[int], n: int, *, initial: int = 1) -> int:
-    """Compute the product of the elements of the iterable mod n"""
-    return functools.reduce(lambda a, b: (a * b) % n, iterable, initial % n)
 
 
 def index_calculus(n: int, primes: tuple[int, ...]) -> tuple[int, int]:
