@@ -296,3 +296,14 @@ def _compute_dixon_factorization(
         return (p1, p2)
 
     raise BadRootsError("Bad pair of roots")
+
+
+if __name__ == "__main__":
+    from algorithms.number_theory.primes import sieve_of_eratosthenes
+
+    # Close to the 64-bit limit on n
+    p, q = 2028156391, 3458934959
+    found_p, found_q = quadratic_sieve(p * q, sieve_of_eratosthenes(2000))
+
+    assert (p, q) == (found_p, found_q)
+    print(f"{p*q} = {found_p} * {found_q}")
