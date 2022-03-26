@@ -5,3 +5,4 @@ venv/
 dist/
 build/
 src/*.egg-info/
+src/algorithms/artificial_intelligence/output/

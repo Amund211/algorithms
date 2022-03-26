@@ -245,6 +245,17 @@ def _add_node_to_visualization(
 if __name__ == "__main__":
     import csv
 
+    root_dir = Path(__file__).parent
+
+    data_dir = root_dir / "data"
+    train_path = data_dir / "decision_tree_train.csv"
+    test_path = data_dir / "decision_tree_test.csv"
+
+    output_dir = root_dir / "output" / "decision_tree"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    random_outfile = output_dir / "random_tree.png"
+    information_gain_outfile = output_dir / "information_gain_tree.png"
+
     BinaryValue = Literal[1, 2]
     values: tuple[BinaryValue, BinaryValue] = (1, 2)
     ExampleData = Collection[tuple[Mapping[BinaryValue, BinaryValue], bool]]
@@ -269,8 +280,8 @@ if __name__ == "__main__":
             for row in map(lambda raw_row: tuple(map(int, raw_row)), raw_data)
         )
 
-    train_data = read_data(Path("train.csv"))
-    test_data = read_data(Path("test.csv"))
+    train_data = read_data(train_path)
+    test_data = read_data(test_path)
 
     random_tree = learn_decision_tree(
         data=train_data, importance=random_importance, values=values
@@ -280,10 +291,8 @@ if __name__ == "__main__":
         data=train_data, importance=information_gain_importance, values=values
     )
 
-    visualize_decision_tree(random_tree, outfile=Path("random_tree.png"))
-    visualize_decision_tree(
-        information_gain_tree, outfile=Path("information_gain_tree.png")
-    )
+    visualize_decision_tree(random_tree, outfile=random_outfile)
+    visualize_decision_tree(information_gain_tree, outfile=information_gain_outfile)
 
     total_examples = len(test_data)
     random_correct_examples = 0
