@@ -1,5 +1,20 @@
+import math
+
 import numpy as np
 import numpy.typing as npt
+
+
+def is_prime(n: int) -> bool:
+    return all(n % i != 0 for i in range(2, math.ceil(math.sqrt(n)) + 1))
+
+
+def is_coprime(a: int, b: int) -> bool:
+    return math.gcd(a, b) == 1
+
+
+def is_power_of_2(n: int) -> bool:
+    """Return True if n is on the form 2^i, i>=0"""
+    return n & (n - 1) == 0
 
 
 def sieve_of_eratosthenes(n: int) -> tuple[int, ...]:
