@@ -1,4 +1,3 @@
-import itertools
 import math
 import random
 from typing import Iterable, Iterator, Optional, Protocol
@@ -7,7 +6,7 @@ import numpy as np
 import numpy.linalg
 import numpy.typing as npt
 
-from algorithms.linear_algebra.row_reduce import row_reduce_mod_2
+from algorithms.linear_algebra.row_reduce import kernel_vectors_mod_2
 from algorithms.number_theory.modular_arithmetic import product_mod_n, tonelli_shanks
 from algorithms.number_theory.primes import FactorizationError, factor_into
 
@@ -212,51 +211,11 @@ def _compute_dixon_factorization(
 
     Raise BadRootsError if none of the products give useful roots
     """
-    L = len(primes)
-    amt_rs = powers_matrix.shape[1]
-    assert powers_matrix.shape[0] == L
-    assert amt_rs > 1
-
-    # Do gaussian elimination to get row-reduced echelon form
-    reduced, pivot_columns = row_reduce_mod_2(powers_matrix % 2)
-
-    # Components that we can choose freely
-    non_pivot_columns = set(range(amt_rs)) - set(pivot_columns)
+    assert powers_matrix.shape[0] == len(primes)  # L
+    assert powers_matrix.shape[1] > 1  # number of relations
 
     # Consider every vector in the null-space
-    for non_pivot_values in itertools.product(
-        *((0, 1) for _ in range(len(non_pivot_columns)))
-    ):
-        non_pivot_mapping = {
-            index: value for index, value in zip(non_pivot_columns, non_pivot_values)
-        }
-
-        # Sum of all the non-pivot columns in a row
-        row_sum = {
-            row: sum(
-                non_pivot_mapping[column] * reduced[row, column]
-                for column in non_pivot_columns
-            )
-            for row in range(L)
-        }
-
-        coefficients = tuple(
-            # Set the free variables
-            non_pivot_mapping[column] if column in non_pivot_columns
-            # Set the pivot columns so that each row sums to 0
-            else row_sum[pivot_columns.index(column)]
-            for column in range(amt_rs)
-        )
-
-        if amt_rs >= L:
-            # We are guaranteed a solution Ax = 0 (mod 2)
-            assert not any((powers_matrix @ coefficients) % 2)
-        else:
-            # We are not guaranteed a solution Ax = 0 (mod 2)
-            # Skip this combination if it is not in the null space mod 2
-            if any((powers_matrix @ coefficients) % 2):
-                continue
-
+    for coefficients in kernel_vectors_mod_2(powers_matrix):
         if not any(powers_matrix @ coefficients):
             # Check that the resulting number is not 1
             continue
