@@ -3,12 +3,12 @@ import pytest
 from algorithms.algebra.number_field_sieve import nfs
 
 FACTORIZATION_CASES: tuple[tuple[dict[str, int], int, int], ...] = (
-    ## Returns early bc of phi(I)
+    ## Returns early bc of phi(I)  # noqa: E266
     ({"r": 2, "e": 23, "s": 1, "prime_bound": 47, "sieve_bound": 2}, 47, 178481),
     ({"r": 2, "e": 15, "s": 1, "prime_bound": 7, "sieve_bound": 2}, 7, 31 * 151),
     ({"r": 2, "e": 11, "s": 1, "prime_bound": 23, "sieve_bound": 2}, 23, 89),
     ({"r": 2, "e": 9, "s": 1, "prime_bound": 7, "sieve_bound": 2}, 7, 73),
-    ## Actual factorizations
+    ## Actual factorizations  # noqa: E266
     # ~1 secs
     (
         {"r": 2, "e": 29, "s": 1, "prime_bound": 100, "sieve_bound": 100},
