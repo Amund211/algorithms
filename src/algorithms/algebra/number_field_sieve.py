@@ -13,6 +13,7 @@ import logging
 import math
 import operator
 import time
+from dataclasses import dataclass
 from enum import Enum
 from typing import Iterator, Literal
 
@@ -110,7 +111,7 @@ class Logger(Enum):
     @functools.cache
     def max_length(cls) -> int:
         """Length of longest logger name"""
-        return max(map(lambda l: len(l.name), cls))
+        return max(map(lambda l: len(l.name), cls))  # type: ignore
 
     @property
     def logger(self) -> logging.Logger:
@@ -146,6 +147,39 @@ def time_section(task: str, level: int = LogLevel.DEBUG) -> Iterator[None]:
     )
 
 
+@dataclass(frozen=True)
+class Params:
+    """Class storing parameters used in the snfs implementation"""
+
+    n: int  # number to factor
+    multiple: int  # N = n * multiple
+    # N = r^e - s
+    N: int
+    r: int
+    e: int
+    s: int
+
+    # f(x) = x^d - t
+    d: int
+    t: int
+    abs_alpha: float  # |t|^(1/d)
+    m: int  # A root of f over Z/Zn
+    r1: int  # Number of real roots of f
+    r2: int  # Number of complex roots of f up to conjugation
+    l: int  # Number of units - 1. l = r1 + r2 - 1
+    alpha_i: tuple[float | complex]  # Roots of f over C. len(alpha_i) == l
+
+    # Sieving bounds
+    a_max: int
+    a_min: int
+    b_max: int
+
+    B: int  # Rational and algebraic smoothness bound
+    extra_relations: int  # Number of relations + #I to gather
+    M: int  # Multiplier bound for generators
+    C: float  # Norm search bound for generators
+
+
 def L(n: float, alpha: float, c: float, fudge: float = 0.1) -> float:
     """Compute L_n[alpha, c]"""
     return math.exp(
@@ -162,6 +196,170 @@ def map_to_integer(gamma: tuple[float, ...]) -> tuple[int, ...]:
     """Map the elements to ints"""
     assert all(map(lambda s: s == int(s), gamma)), f"{gamma}"
     return tuple(map(int, gamma))
+
+
+def f(x: int, p: int, params: Params) -> int:
+    """Evaluate f(x) (mod p)"""
+    return (pow(x, params.d, p) - params.t) % p
+
+
+def small_norm(a: int, b: int, params: Params) -> int:
+    """Compute the norm of a + b alpha in Z[alpha]"""
+    assert b > 0
+    result = pow(a, params.d) - params.t * pow(-b, params.d)
+    assert isinstance(result, int), type(result)
+    return result
+
+
+def is_nth_power(x: int, n: int) -> bool:
+    assert n > 0
+
+    if x < 0 and n % 2 == 0:
+        return False
+
+    if x < 0:
+        x *= -1
+    nth_root = int(pow(x, 1 / n))
+    return int(pow(nth_root, n)) == x
+
+
+def phi(gamma: tuple[int, ...], params: Params) -> int:
+    """Ring homomorphism phi: Z[alpha] -> Z_n, phi(alpha) = (m mod n)"""
+    # a + bm and a + balpha have the same image under phi
+    return sum(s * pow(params.m, i, params.n) for i, s in enumerate(gamma)) % params.n
+
+
+def to_full_vector(a: int, b: int, params: Params) -> tuple[int, ...]:
+    """Return the representation in Z[alpha] of a + b alpha"""
+    return (a, b, *itertools.repeat(0, params.d - 2))
+
+
+def search_value(gamma: tuple[int, ...], params: Params) -> float:
+    assert len(gamma) == params.d
+    return sum(s_i**2 * params.abs_alpha ** (2 * i) for i, s_i in enumerate(gamma))
+
+
+def mult_matrix(gamma: tuple[float, ...], params: Params) -> sympy.Matrix:
+    return sympy.Matrix(
+        [
+            [
+                gamma[offset - i] * (params.t if i > offset else 1)
+                for i in range(params.d)
+            ]
+            for offset in range(params.d)
+        ]
+    )
+
+
+def float_multiply(
+    gamma1: tuple[float, ...], gamma2: tuple[float, ...], params: Params
+) -> sympy.Matrix:
+    return mult_matrix(gamma1, params) * sympy.Matrix(params.d, 1, gamma2)
+
+
+def multiply(
+    gamma1: tuple[float, ...], gamma2: tuple[float, ...], params: Params
+) -> tuple[int, ...]:
+    return map_to_integer(float_multiply(gamma1, gamma2, params))
+
+
+def is_inverse(
+    gamma1: tuple[float, ...], gamma2: tuple[float, ...], params: Params
+) -> bool:
+    """Return True if gamma1 = gamma2^-1 (gamma1 * gamma2 = 1)"""
+    return multiply(gamma1, gamma2, params) == to_full_vector(1, 0, params)
+
+
+def norm(gamma: tuple[int, ...], params: Params) -> int:
+    """Return the norm of gamma = sum(s_i * alpha^i)"""
+    # Uses the definition that the norm is the determinant of the matrix for the
+    # multiplication with gamma
+    # Uses sympy matrix to get the precise integer answer
+    # TODO: Use sympy to compute a polynomial for this
+    return int(mult_matrix(gamma, params).det())
+
+
+def invert(gamma: tuple[float, ...], params: Params) -> sympy.Matrix:
+    return mult_matrix(gamma, params).solve(
+        sympy.Matrix(params.d, 1, [1 if i == 0 else 0 for i in range(params.d)])
+    )
+
+
+def compute_power(
+    gamma: tuple[float, ...], exponent: int, params: Params
+) -> tuple[float, ...]:
+    """Compute gamma^exponent in the number field"""
+    if exponent == 0:
+        return to_full_vector(1, 0, params)  # 1
+
+    if exponent < 0:
+        exponent *= -1
+        gamma = invert(gamma, params)
+
+    # Dumb linear time power increase
+    result = gamma
+    for _ in range(exponent - 1):
+        result = float_multiply(result, gamma, params)
+
+    return result
+
+
+@functools.cache
+def invert_generator(g: tuple[int, ...], e_g: int, params: Params) -> tuple[float, ...]:
+    """Compute g^(-e_g)"""
+    assert e_g > 0
+    result = compute_power(g, -e_g, params)
+
+    assert is_inverse(result, compute_power(g, e_g, params), params)
+    return result
+
+
+def phi_i(gamma: tuple[float, ...], i: int, params: Params) -> complex:
+    """
+    phi_i: K -> C, phi_i maps sum(s_k alpha^k) to sum(s_k alpha_i^k)
+
+    NOTE: 0-indexed (i in [0, ..., l-1]
+    """
+    return sum(s * params.alpha_i[i] ** k for k, s in enumerate(gamma))
+
+
+def nu(gamma: tuple[int, ...], params: Params) -> tuple[float, ...]:
+    assert any(gamma)
+    return tuple(
+        math.log(abs(phi_i(gamma, i=i, params=params)))
+        - math.log(abs(norm(gamma, params))) / params.d
+        for i in range(params.l)
+    )
+
+
+def fix_sign(u: tuple[int, ...], params: Params) -> tuple[int, ...]:
+    """Multiply by u0 so the unit behaves properly under the chosen embedding"""
+    assert any(u)
+    assert abs(norm(u, params)) == 1
+    if params.r1 > 0:
+        # u0 = -1
+        u0 = to_full_vector(-1, 0, params)
+        # Use phi_0(gamma) as the embedding into R
+        if phi_i(u, i=0, params=params) < 0:
+            return multiply(u, u0, params)
+        else:
+            return u
+    else:
+        assert False
+
+
+def compute_v(
+    gamma: tuple[int, ...],
+    G: tuple[tuple[int, ...], ...],
+    G_contribution: tuple[int, ...],
+    params: Params,
+) -> tuple[int, ...]:
+    """Compute (a + b alpha) * Πg^(-e(g))"""
+    for g, e_g in zip(G, G_contribution):
+        if e_g == 0:
+            continue
+        gamma = multiply(gamma, invert_generator(g, e_g, params), params)
+    return gamma
 
 
 def nfs(
@@ -222,29 +420,9 @@ def nfs(
 
     m = pow(r, k)  # A root of f (mod n)
 
-    def f(x: int, p: int) -> int:
-        """Evaluate f(x) (mod p)"""
-        return (pow(x, d, p) - t) % p
-
-    def small_norm(a: int, b: int) -> int:
-        """Compute the norm of a + b alpha in Z[alpha]"""
-        assert b > 0
-        return pow(a, d) - t * pow(-b, d)
-
     log(f"{d=} {k=} {t=} m={r}^{k}", logger=Logger.MISC)
 
     # Assert irreducibility
-    def is_nth_power(x: int, n: int) -> bool:
-        assert n > 0
-
-        if x < 0 and n % 2 == 0:
-            return False
-
-        if x < 0:
-            x *= -1
-        nth_root = int(pow(x, 1 / n))
-        return int(pow(nth_root, n)) == x
-
     # f is reducible if and only if either there is
     # a prime number p dividing d such that t is a pth power,
     assert not any(
@@ -253,52 +431,14 @@ def nfs(
     # or 4 divides d and 4t is a fourth power
     assert not (math.gcd(4, d) == 4 and is_nth_power(4 * t, n=4))
 
-    def phi(gamma: tuple[int, ...]) -> int:
-        """Ring homomorphism phi: Z[alpha] -> Z_n, phi(alpha) = (m mod n)"""
-        # a + bm and a + balpha have the same image under phi
-        return sum(s * pow(m, i, n) for i, s in enumerate(gamma)) % n
-
     # Assume Z[alpha] UFD
 
     # Step 1 of the sieve [2.7]
-    # Select smoothness bounds B1, B2
+    # Select smoothness bound B (=B1=B2)
     # TODO: This value is way larger then the one they present in [8] (pg. 37)
-    B1 = B2 = prime_bound or math.ceil(L(N, 1 / 3, (2 / 3) ** (2 / 3)))  # [6.3]
+    B = prime_bound or math.ceil(L(N, 1 / 3, (2 / 3) ** (2 / 3)))  # [6.3]
     a_max = b_max = sieve_bound or math.ceil(L(N, 1 / 3, (2 / 3) ** (2 / 3)))  # [6.3]
     a_min = -a_max
-
-    log(f"{B1=} {B2=}", logger=Logger.FACTORBASE)
-
-    with time_section("prime sieveing"):
-        P = sieve_of_eratosthenes(B1)
-
-    log_P = np.log(P)
-    log(f"#P={len(P)}", logger=Logger.FACTORBASE)
-
-    # U and G - see [3]
-    # Ideals
-    # https://en.wikipedia.org/wiki/Berlekamp%E2%80%93Rabin_algorithm#Berlekamp's_method
-    with time_section("ideal finding"):
-        ideals_per_prime = tuple(tuple(c for c in range(p) if f(c, p) == 0) for p in P)
-
-    ideals = sum(
-        (tuple((p, c) for c in c_list) for p, c_list in zip(P, ideals_per_prime)),
-        start=(),
-    )
-
-    log(
-        "Ideals per prime: (p, (c1, c2, ...))",
-        logger=Logger.FACTORBASE,
-        level=LogLevel.TRACE,
-    )
-    for p, c_list in zip(P, ideals_per_prime):
-        log(
-            f"\t{(p, c_list)}",
-            logger=Logger.FACTORBASE,
-            level=LogLevel.TRACE,
-        )
-
-    log(f"#G={len(ideals)}", logger=Logger.FACTORBASE)
 
     abs_alpha = abs(t) ** (1 / d)
 
@@ -331,141 +471,122 @@ def nfs(
 
     log(f"{alpha_i=}", logger=Logger.SEARCH)
 
+    # TODO: Fix these values [3.6]
+    M = 10  # Multiplier bound
+    C = d * abs(t) ** ((d - 1) / d) * B ** (2 / d)  # Search bound
+
+    params = Params(
+        n=n,
+        multiple=multiple,
+        N=N,
+        r=r,
+        e=e,
+        s=s,
+        d=d,
+        t=t,
+        abs_alpha=abs_alpha,
+        m=m,
+        r1=r1,
+        r2=r2,
+        l=l,
+        alpha_i=tuple(alpha_i),
+        a_max=a_max,
+        a_min=a_min,
+        b_max=b_max,
+        B=B,
+        extra_relations=extra_relations,
+        M=M,
+        C=C,
+    )
+
+    log(f"{B=}", logger=Logger.FACTORBASE)
+
+    with time_section("prime sieveing"):
+        P = sieve_of_eratosthenes(params.B)
+
+    log_P = np.log(P)
+    log(f"#P={len(P)}", logger=Logger.FACTORBASE)
+
+    # U and G - see [3]
+    # Ideals
+    # https://en.wikipedia.org/wiki/Berlekamp%E2%80%93Rabin_algorithm#Berlekamp's_method
+    with time_section("ideal finding"):
+        ideals_per_prime = tuple(
+            tuple(c for c in range(p) if f(c, p, params) == 0) for p in P
+        )
+
+    ideals = sum(
+        (tuple((p, c) for c in c_list) for p, c_list in zip(P, ideals_per_prime)),
+        start=(),
+    )
+
+    log(
+        "Ideals per prime: (p, (c1, c2, ...))",
+        logger=Logger.FACTORBASE,
+        level=LogLevel.TRACE,
+    )
+    for p, c_list in zip(P, ideals_per_prime):
+        log(
+            f"\t{(p, c_list)}",
+            logger=Logger.FACTORBASE,
+            level=LogLevel.TRACE,
+        )
+
+    log(f"#G={len(ideals)}", logger=Logger.FACTORBASE)
+
     # The units of Z[alpha] are generated by a suitable root of unity u0, and l
     # multiplicatively independent units u1, ..., ul
-    def to_full_vector(a: int, b: int) -> tuple[int, ...]:
-        """Return the representation in Z[alpha] of a + b alpha"""
-        return (a, b, *itertools.repeat(0, d - 2))
-
     # If r1 > 0 we can let u0 = -1
     # Otherwise we need some complex embedding
     # TODO: Define the embedding of units and generators g to R
     if r1 > 0:
-        u0 = to_full_vector(-1, 0)
+        u0 = to_full_vector(-1, 0, params)
     else:
         assert False
 
     # Implied by Z[alpha] being the ring of integers in K
-    assert e % d == 0 or e % d == (-1) % d, f"{e=} {d=}"
+    assert (
+        params.e % params.d == 0 or params.e % params.d == (-1) % params.d
+    ), f"{params.e=} {params.d=}"
 
     # An element x = sum(s_i alpha^i) belongs to the ideal "(p, c)" if sum(s_i c^i) = 0 (mod p)
     # An element x generates "(p, c)" if it belongs to it, and has norm N(x) = +- p
 
     # Search for elements of U and G
 
-    # TODO: Fix these values [3.6]
-    M = 10  # Multiplier bound
-    C = d * abs(t) ** ((d - 1) / d) * B2 ** (2 / d)  # Search bound
-
     # For all gamma in Z[alpha] with sum(s_i^2 |alpha|^2i) <= C
     # TODO: use search for short vectors in lattice
-    s_bounds = tuple(math.floor(math.sqrt(C / abs_alpha ** (2 * i))) for i in range(d))
+    s_bounds = tuple(
+        math.floor(math.sqrt(params.C / params.abs_alpha ** (2 * i)))
+        for i in range(params.d)
+    )
 
     log(
-        f"Searching {functools.reduce(operator.mul, s_bounds) * 2**d} members of Z[alpha]. Bounds: {s_bounds} ({C=:.2f})",
+        f"Searching {functools.reduce(operator.mul, s_bounds) * 2**params.d} members of Z[alpha]. Bounds: {s_bounds} ({params.C=:.2f})",
         logger=Logger.SEARCH,
     )
 
-    def search_value(gamma: tuple[int, ...]) -> float:
-        assert len(gamma) == d
-        return sum(s_i**2 * abs_alpha ** (2 * i) for i, s_i in enumerate(gamma))
-
-    def mult_matrix(gamma: tuple[float, ...]) -> sympy.Matrix:
-        return sympy.Matrix(
-            [
-                [gamma[offset - i] * (t if i > offset else 1) for i in range(d)]
-                for offset in range(d)
-            ]
-        )
-
-    def float_multiply(
-        gamma1: tuple[float, ...], gamma2: tuple[float, ...]
-    ) -> tuple[float, ...]:
-        return mult_matrix(gamma1) * sympy.Matrix(d, 1, gamma2)
-
-    def multiply(
-        gamma1: tuple[float, ...], gamma2: tuple[float, ...]
-    ) -> tuple[int, ...]:
-        return map_to_integer(float_multiply(gamma1, gamma2))
-
-    def is_inverse(gamma1: tuple[int, ...], gamma2: tuple[int, ...]) -> bool:
-        """Return True if gamma1 = gamma2^-1 (gamma1 * gamma2 = 1)"""
-        return multiply(gamma1, gamma2) == (1, *(itertools.repeat(0, d - 1)))
-
-    def norm(gamma: tuple[int, ...]) -> int:
-        """Return the norm of gamma = sum(s_i * alpha^i)"""
-        # Uses the definition that the norm is the determinant of the matrix for the
-        # multiplication with gamma
-        # Uses sympy matrix to get the precise integer answer
-        # TODO: Use sympy to compute a polynomial for this
-        return int(mult_matrix(gamma).det())
-
-    def invert(gamma: tuple[int, ...]) -> tuple[float, ...]:
-        return mult_matrix(gamma).solve(
-            sympy.Matrix(d, 1, [1 if i == 0 else 0 for i in range(d)])
-        )
-
-    def compute_power(gamma: tuple[float, ...], exponent: int) -> tuple[float, ...]:
-        """Compute gamma^exponent in the number field"""
-        if exponent == 0:
-            return to_full_vector(1, 0)  # 1
-
-        if exponent < 0:
-            exponent *= -1
-            gamma = invert(gamma)
-
-        # Dumb linear time power increase
-        result = gamma
-        for _ in range(exponent - 1):
-            result = float_multiply(result, gamma)
-
-        return result
-
-    @functools.cache
-    def invert_generator(g: tuple[int, ...], e_g: int) -> tuple[float, ...]:
-        """Compute g^(-e_g)"""
-        assert e_g > 0
-        result = compute_power(invert(g), e_g)
-
-        assert is_inverse(result, compute_power(g, e_g))
-        return result
-
-    def phi_i(gamma: tuple[float, ...], i: int) -> complex:
-        """
-        phi_i: K -> C, phi_i maps sum(s_k alpha^k) to sum(s_k alpha_i^k)
-
-        NOTE: 0-indexed (i in [0, ..., l-1]
-        """
-        return sum(s * alpha_i[i] ** k for k, s in enumerate(gamma))
-
-    def nu(gamma: tuple[int, ...]) -> tuple[float, ...]:
-        assert any(gamma)
-        return tuple(
-            math.log(abs(phi_i(gamma, i=i))) - math.log(abs(norm(gamma))) / d
-            for i in range(l)
-        )
-
-    multipliers = [[M + 1] * len(c_list) for c_list in ideals_per_prime]
+    multipliers = [[params.M + 1] * len(c_list) for c_list in ideals_per_prime]
     generators: list[list[tuple[int, ...] | None]] = [
         [None] * len(c_list) for c_list in ideals_per_prime
     ]
     found_units: set[tuple[int, ...]] = set()
-    small_ideals: list[tuple[int, ...] | None] = [None] * (M - 1)
+    small_ideals: list[tuple[int, ...] | None] = [None] * (params.M - 1)
 
     for gamma in itertools.product(*(range(-bound, bound + 1) for bound in s_bounds)):
         if not any(gamma):
             # Skip 0
             continue
 
-        if search_value(gamma) > C:
+        if search_value(gamma, params) > params.C:
             continue
 
-        norm_g = norm(gamma)
+        norm_g = norm(gamma, params)
 
         if abs(norm_g) == 1:
             # Store found units
             found_units.add(gamma)
-        elif 2 <= abs(norm_g) <= M:
+        elif 2 <= abs(norm_g) <= params.M:
             # Store found ideals with norm <= M
             # Used to divide out the multiplier from the generators after
             small_ideals[abs(norm_g) - 2] = gamma
@@ -487,7 +608,7 @@ def nfs(
                 continue
 
             k = norm_g // p
-            if abs(k) > M:
+            if abs(k) > params.M:
                 continue
 
             for ideal_index, c in enumerate(c_list):
@@ -504,7 +625,7 @@ def nfs(
                 generators[prime_index][ideal_index] = gamma
 
     inverse_small_ideals: list[tuple[int, ...] | None] = [
-        invert(g) if g is not None else None for g in small_ideals
+        invert(g, params) if g is not None else None for g in small_ideals
     ]
 
     log(
@@ -522,29 +643,32 @@ def nfs(
     for g, g_inv in zip(small_ideals, inverse_small_ideals):
         if g is None:
             continue
-        assert multiply(g, g_inv) == (1, *(itertools.repeat(0, d - 1)))
+        assert g_inv is not None
+
+        assert is_inverse(g, g_inv, params)
 
     for prime_index, (current_multipliers, current_generators) in enumerate(
         zip(multipliers, generators)
     ):
         assert all(
-            abs(m) <= M for m in current_multipliers
+            abs(m) <= params.M for m in current_multipliers
         ), "Too large multiplier at {prime_index=}"
         assert not any(
             g is None for g in current_generators
         ), "Missing generator at {prime_index=}"
 
         for i, (mult, gen) in enumerate(zip(current_multipliers, current_generators)):
+            assert gen is not None
             if abs(mult) == 1:
                 continue
             else:
-                assert (
-                    inverse_small_ideals[abs(mult) - 2] is not None
-                ), f"{prime_index=} {mult=}"
-                current_generators[i] = multiply(
-                    gen, inverse_small_ideals[abs(mult) - 2]
+                # The inverse of an ideal with norm `mult`
+                multiplier_inverse = inverse_small_ideals[abs(mult) - 2]
+                assert multiplier_inverse is not None, f"{prime_index=} {mult=}"
+                result = current_generators[i] = multiply(
+                    gen, multiplier_inverse, params
                 )
-                current_multipliers[i] = norm(current_generators[i])
+                current_multipliers[i] = norm(result, params)
 
                 assert abs(current_multipliers[i]) == 1
 
@@ -554,9 +678,10 @@ def nfs(
             for i, (mult, gen) in enumerate(
                 zip(current_multipliers, current_generators)
             ):
+                assert gen is not None
                 assert abs(mult) == 1
-                if phi_i(gen, i=0) < 0:
-                    current_generators[i] = multiply(gen, u0)
+                if phi_i(gen, i=0, params=params) < 0:
+                    current_generators[i] = multiply(gen, u0, params)
         else:
             # Complex embedding
             assert False
@@ -564,13 +689,6 @@ def nfs(
     G = sum(map(tuple, generators), start=())
 
     # TODO: find more units by dividing generators of the same abs norm
-
-    def linearly_dependent(vectors: list[tuple[int, ...]], v: tuple[int, ...]) -> bool:
-        """Return True if v is a linear combination in vectors"""
-        assert any(v)
-        if not vectors:
-            return False
-        raise NotImplementedError
 
     assert r1 > 0
     # u0 = -1
@@ -582,10 +700,11 @@ def nfs(
             continue
 
         span = tuple(
-            map_to_integer(compute_power(u, exponent)) for exponent in range(-10, 10)
+            map_to_integer(compute_power(u, exponent, params))
+            for exponent in range(-10, 10)
         )
         for new_unit in span:
-            shifted = multiply(new_unit, u0)
+            shifted = multiply(new_unit, u0, params)
 
             if new_unit != u and new_unit in found_units:
                 found_units.remove(new_unit)
@@ -595,23 +714,23 @@ def nfs(
 
     # Remove units generated by a pair of other units
     for u1 in found_units.copy():
-        for u2 in found_units.copy():
-            if u1 not in found_units or u2 not in found_units or u1 == u2:
+        for u2 in found_units - {u1}:
+            if u1 not in found_units or u2 not in found_units:
                 # Already been removed
                 continue
 
             span1 = tuple(
-                map_to_integer(compute_power(u1, exponent))
+                map_to_integer(compute_power(u1, exponent, params))
                 for exponent in range(-10, 10)
             )
             span2 = tuple(
-                map_to_integer(compute_power(u2, exponent))
+                map_to_integer(compute_power(u2, exponent, params))
                 for exponent in range(-10, 10)
             )
 
             for u1_power, u2_power in itertools.product(span1, span2):
-                new_unit = multiply(u1_power, u2_power)
-                shifted = multiply(new_unit, u0)
+                new_unit = multiply(u1_power, u2_power, params)
+                shifted = multiply(new_unit, u0, params)
 
                 if new_unit != u1 and new_unit != u2 and new_unit in found_units:
                     found_units.remove(new_unit)
@@ -625,28 +744,17 @@ def nfs(
     assert len(found_units) == l, "Did not find a sufficient set of units during search"
     assert l <= 2, "Linear dependencies are currently only removed for l<=2"
 
-    def fix_sign(u: tuple[int, ...]) -> tuple[int, ...]:
-        """Multiply by u0 so the unit behaves properly under the chosen embedding"""
-        assert any(u)
-        assert abs(norm(u)) == 1
-        if r1 > 0:
-            # u0 = -1
-            # Use phi_0(gamma) as the embedding into R
-            if phi_i(u, i=0) < 0:
-                return multiply(u, u0)
-            else:
-                return u
-        else:
-            assert False
-
     # If we first assert r1 > 0 and then make the unit positive under embedding
     # We can mby skip out on u0
     # Either way we can mby look at every selection of l units from the found units and
     # see what they generate
 
     # TODO: Filter the units based on linear dependencies
-    U: tuple[tuple[int, ...]] = (u0, *map(fix_sign, found_units))
-    nu_u = tuple(map(nu, U[1:]))
+    U: tuple[tuple[int, ...], ...] = (
+        u0,
+        *map(functools.partial(fix_sign, params=params), found_units),
+    )
+    nu_u = tuple(map(functools.partial(nu, params=params), U[1:]))
 
     log(f"#U={len(U)}", logger=Logger.FACTORBASE)
 
@@ -674,21 +782,21 @@ def nfs(
     # Define I = P and U and G
 
     # Factor base is phi(I)
-    I = tuple(itertools.chain(map(lambda p: to_full_vector(p, 0), P), U, G))
-    phi_I = tuple(map(phi, I))
+    I = tuple(itertools.chain(map(lambda p: to_full_vector(p, 0, params), P), U, G))
+    phi_I = tuple(map(functools.partial(phi, params=params), I))
 
     # Assume gcd(a_i, n) == 1, otherwise we have a trivial factorization
     for a in phi_I:
-        if math.gcd(a, n) != 1:
+        if math.gcd(a, params.n) != 1:
             log(
-                f"Member of phi(I) {a} had {math.gcd(a, n)=} != 1",
+                f"Member of phi(I) {a} had {math.gcd(a, params.n)=} != 1",
                 logger=Logger.MISC,
             )
 
-            p1 = math.gcd(a, n)
-            p2 = n // p1
+            p1 = math.gcd(a, params.n)
+            p2 = params.n // p1
 
-            assert n % p1 == 0
+            assert params.n % p1 == 0
 
             if p1 > p2:
                 return (p2, p1)
@@ -714,14 +822,16 @@ def nfs(
     # Search for relations gcd(a, b) == 1, |a + bm| B1 smooth, a + balpha B2 smooth
 
     # Sieve like described in [4]
-    assert abs(a_min) < 2**63 and abs(a_max) < 2**63
-    a_range: npt.NDArray[np.int64] = np.arange(a_min, a_max + 1, dtype=np.int64)
+    assert abs(params.a_min) < 2**63 and abs(params.a_max) < 2**63
+    a_range: npt.NDArray[np.int64] = np.arange(
+        params.a_min, params.a_max + 1, dtype=np.int64
+    )
 
     total_sieved = 0
     total_valid = 0
 
     powers_matrix: npt.NDArray[np.int32] = np.empty(
-        (len(I), len(I) + extra_relations), dtype=np.int32
+        (len(I), len(I) + params.extra_relations), dtype=np.int32
     )
 
     # TODO: Free relations [2.13]
@@ -729,16 +839,18 @@ def nfs(
     # TODO: multiprocess bs or chunks of bs
     for b in itertools.count(1):
         log(
-            f"Found {total_valid}/{len(I) + extra_relations} relations at {b=}",
+            f"Found {total_valid}/{len(I) + params.extra_relations} relations at {b=}",
             logger=Logger.SIEVE,
         )
-        if total_valid == len(I) + extra_relations:
+
+        if total_valid == len(I) + params.extra_relations:
             break
+
         log(f"{b=} {'-' * 40}", logger=Logger.SIEVE, level=LogLevel.TRACE)
 
-        if b > b_max:
+        if b > params.b_max:
             log(
-                f"Sieve exceeded value of b_max {b=}>{b_max}",
+                f"Sieve exceeded value of b_max {b=}>{params.b_max}",
                 logger=Logger.SIEVE,
                 level=LogLevel.WARNING,
             )
@@ -767,7 +879,12 @@ def nfs(
         # Second sieve
         logsum = np.zeros_like(threshold)
         threshold = (
-            np.log(np.abs(np.power(a_range, d, dtype=np.float32) - t * (-b) ** d))
+            np.log(
+                np.abs(
+                    np.power(a_range, params.d, dtype=np.float32)
+                    - params.t * (-b) ** params.d
+                )
+            )
             - log_P[-1]
         )
 
@@ -809,16 +926,6 @@ def nfs(
             level=LogLevel.TRACE,
         )
 
-        def compute_v(
-            gamma: tuple[int, ...], G_contribution: tuple[int, ...]
-        ) -> tuple[int, ...]:
-            """Compute (a + b alpha) * Πg^(-e(g))"""
-            for g, e_g in zip(G, G_contribution):
-                if e_g == 0:
-                    continue
-                gamma = multiply(gamma, invert_generator(g, e_g))
-            return gamma
-
         for a in a_candidates:
             try:
                 P_contribution = factor_into(a + b * m, P)
@@ -831,7 +938,7 @@ def nfs(
                 )
                 continue
 
-            current_norm = small_norm(a, b)
+            current_norm = small_norm(int(a), int(b), params)
 
             assert current_norm != 0, f"Cannot factor 0 = small_norm({a=}, {b=})"
 
@@ -864,49 +971,51 @@ def nfs(
 
             G_contribution = tuple(G_contribution_list)
 
+            gamma = to_full_vector(a, b, params)
+
             if r1 > 0:
-                e_u0 = 0 if phi_i(to_full_vector(a, b), i=0) >= 0 else 1
+                e_u0 = 0 if phi_i(gamma, i=0, params=params) >= 0 else 1
             else:
                 # TODO: Compute e(u_0)
                 assert False
 
-            v_u = compute_v(to_full_vector(a, b), G_contribution)
-            unitless = multiply(to_full_vector(a, b), invert(v_u))
+            v_u = compute_v(gamma, G, G_contribution, params)
+            unitless = multiply(gamma, invert(v_u, params), params)
 
-            U_plus_contribution = W_inv @ nu(v_u)
+            U_plus_contribution = W_inv @ nu(v_u, params)
             # TODO: fix
             # YOLO rounding:
             U_contribution = (e_u0, *map(round, U_plus_contribution))
 
             # Compute (a + b alpha) from the factorization to verify
             prime_result = functools.reduce(
-                lambda product, new_element: multiply(
-                    product, compute_power(*new_element)
+                functools.partial(multiply, params=params),
+                itertools.starmap(
+                    lambda base, exponent: compute_power(base, exponent, params),
+                    zip(G, G_contribution),
                 ),
-                zip(G, G_contribution),
-                to_full_vector(1, 0),
+                to_full_vector(1, 0, params),
             )
             unit_result = functools.reduce(
-                lambda product, new_element: multiply(
-                    product, compute_power(*new_element)
+                functools.partial(multiply, params=params),
+                itertools.starmap(
+                    lambda base, exponent: compute_power(base, exponent, params),
+                    zip(U, U_contribution),
                 ),
-                zip(U, U_contribution),
-                to_full_vector(1, 0),
+                to_full_vector(1, 0, params),
             )
 
-            result = multiply(prime_result, unit_result)
+            result = multiply(prime_result, unit_result, params)
 
             assert prime_result == unitless, f"{prime_result=} {unitless=}"
 
             try:
                 assert unit_result == v_u, f"{unit_result=} {v_u=}"
-                assert result == to_full_vector(
-                    a, b
-                ), f"{result=} {to_full_vector(a, b)}"
+                assert result == gamma, f"{result=} {gamma}"
             except AssertionError:
                 log(
                     f"Factorization of {a} + {b}*alpha failed due to rounding error. "
-                    f"{v_u=} {nu(v_u)=} estimated powers={U_plus_contribution}",
+                    f"{v_u=} {nu(v_u, params)=} estimated powers={U_plus_contribution}",
                     logger=Logger.SIEVE,
                     level=LogLevel.ERROR,
                 )
@@ -930,7 +1039,7 @@ def nfs(
     log(f"Found {total_valid} valid pairs from sieveing", logger=Logger.SIEVE)
 
     # assert total_valid >= len(I) + extra_relations, total_valid
-    if total_valid < len(I) + extra_relations:
+    if total_valid < len(I) + params.extra_relations:
         log(
             f"Proceeding with only {total_sieved} relations with #I={len(I)}",
             logger=Logger.SIEVE,
@@ -948,24 +1057,24 @@ def nfs(
         )
 
         x = functools.reduce(
-            lambda x, y: (x * y) % n,
+            lambda x, y: (x * y) % params.n,
             itertools.starmap(
-                lambda a, exponent: pow(a, int(exponent), n),
+                lambda a, exponent: pow(a, int(exponent), params.n),
                 zip(phi_I, (powers_matrix @ coefficients) // 2),
             ),
         )
 
-        if (x + 1) % n == 0 or (x - 1) % n == 0:
+        if (x + 1) % params.n == 0 or (x - 1) % params.n == 0:
             # We hit a bad pair of roots - try again
             continue
 
-        p1 = math.gcd(x - 1, n)
-        p2 = n // p1
+        p1 = math.gcd(x - 1, params.n)
+        p2 = params.n // p1
 
         if p1 == 1 or p2 == 1:
             continue
 
-        assert n % p1 == 0
+        assert params.n % p1 == 0
 
         log(f"Obtained factorization with kernel vector nr. {i+1}", logger=Logger.MISC)
 
