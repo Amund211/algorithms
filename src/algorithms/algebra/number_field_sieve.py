@@ -22,6 +22,7 @@ import numpy.typing as npt
 import sympy  # type: ignore
 
 from algorithms.linear_algebra.row_reduce import kernel_vectors_mod_2
+from algorithms.number_theory.modular_arithmetic import product_mod_n
 from algorithms.number_theory.primes import (
     FactorizationError,
     factor_into,
@@ -1082,20 +1083,26 @@ def _evaluate_kernel_vectors(
     i = 0  # In case there are no kernel vectors
 
     for i, coefficients in enumerate(kernel_vectors):
-        if not any(powers_matrix @ coefficients):
+        log(
+            f"Evaluating kernel vector nr. {i+1}",
+            logger=Logger.MISC,
+            level=LogLevel.DEBUG,
+        )
+
+        exponents = powers_matrix @ coefficients
+
+        if not any(exponents):
             # Check that the resulting number is not 1
             continue
 
-        assert all(
-            map(lambda exponent: exponent % 2 == 0, powers_matrix @ coefficients)
-        )
+        assert all(map(lambda exponent: exponent % 2 == 0, exponents))
 
-        x = functools.reduce(
-            lambda x, y: (x * y) % params.n,
+        x = product_mod_n(
             itertools.starmap(
-                lambda a, exponent: pow(a, int(exponent), params.n),
-                zip(phi_I, (powers_matrix @ coefficients) // 2),
+                lambda a, exponent: pow(a, exponent, params.n),
+                zip(phi_I, map(int, exponents // 2)),
             ),
+            params.n,
         )
 
         if (x + 1) % params.n == 0 or (x - 1) % params.n == 0:
