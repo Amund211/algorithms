@@ -1276,7 +1276,7 @@ if __name__ == "__main__":
     quiet = False
 
     for logger, level in loglevels.items():
-        logger.logger.setLevel(LogLevel.WARNING if quiet else level)
+        logger.logger.setLevel(LogLevel.INFO if quiet else level)
 
     with time_section(f"nfs(**{kwargs})"):
         n = kwargs["r"] ** kwargs["e"] - kwargs["s"]
