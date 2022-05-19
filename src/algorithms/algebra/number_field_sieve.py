@@ -437,7 +437,7 @@ def _setup_nfs(
 
     # TODO: Fix these values [3.6]
     M = 10  # Multiplier bound
-    C = d * abs(t) ** ((d - 1) / d) * B ** (2 / d)  # Search bound
+    C = 1 / 2 * d * abs(t) ** ((d - 1) / d) * B ** (2 / d)  # Search bound
 
     return Params(
         n=n,
