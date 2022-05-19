@@ -838,6 +838,7 @@ def _sieve_for_relations(
     P: tuple[int, ...],
     U: tuple[tuple[int, ...], ...],
     G: tuple[tuple[int, ...], ...],
+    phi_I: tuple[int, ...],
     W_inv: npt.NDArray[np.float64],
     verify_factorization: bool,
     params: Params,
@@ -1083,6 +1084,23 @@ def _sieve_for_relations(
                 *negate(G_contribution),
             )
 
+            if (
+                product_mod_n(
+                    itertools.starmap(
+                        functools.partial(pow, mod=params.n),
+                        zip(phi_I, new_relation),
+                    ),
+                    params.n,
+                )
+                != 1
+            ):
+                log(
+                    f"Relation from {a} + {b}*alpha invalid.",
+                    logger=Logger.SIEVE,
+                    level=LogLevel.ERROR,
+                )
+                continue
+
             powers_matrix[:, total_valid] = new_relation
             total_valid += 1
             if total_valid == factorbase_size + params.extra_relations:
@@ -1129,7 +1147,7 @@ def _evaluate_kernel_vectors(
 
         x = product_mod_n(
             itertools.starmap(
-                lambda a, exponent: pow(a, exponent, params.n),
+                functools.partial(pow, mod=params.n),
                 zip(phi_I, map(int, exponents // 2)),
             ),
             params.n,
@@ -1198,12 +1216,13 @@ def nfs(
 
     with time_section("sieveing"):
         powers_matrix = _sieve_for_relations(
-            ideals,
-            ideals_per_prime,
-            P,
-            U,
-            G,
-            W_inv,
+            ideals=ideals,
+            ideals_per_prime=ideals_per_prime,
+            P=P,
+            U=U,
+            G=G,
+            phi_I=phi_I,
+            W_inv=W_inv,
             verify_factorization=False,
             params=params,
         )
@@ -1243,7 +1262,7 @@ if __name__ == "__main__":
         {"r": 2, "e": 139, "s": 1, "prime_bound": 20000},  # ~6 mins
         {"r": 2, "e": 167, "s": 1, "prime_bound": 10000},  # ~4 mins
         {"r": 2, "e": 199, "s": 1, "prime_bound": 30000},  # ~15 mins
-        {"r": 2, "e": 227, "s": 1, "prime_bound": 60000},
+        {"r": 2, "e": 227, "s": 1, "prime_bound": 60000},  # ~90 mins
         {"r": 3, "e": 239, "s": 1, "prime_bound": 200000},
         {"r": 3, "e": 239, "s": 1, "prime_bound": 479910, "sieve_bound": 5 * 10**6},
         {"r": 2, "e": 373, "s": -1, "prime_bound": 287120, "sieve_bound": 5 * 10**6},
