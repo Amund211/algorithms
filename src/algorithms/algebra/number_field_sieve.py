@@ -1165,7 +1165,17 @@ def nfs(
         )
 
     with time_section("computing kernel"):
-        kernel_vectors = kernel_vectors_mod_2(powers_matrix)
+        temp_kernel_vectors = kernel_vectors_mod_2(powers_matrix)
+
+        # The generator is lazy, so we get one vector to force
+        # the computation of the kernel here and not later
+        try:
+            first_vector = next(iter(temp_kernel_vectors))
+        except StopIteration:
+            # No kernel vectors - handled in next step
+            kernel_vectors = temp_kernel_vectors
+        else:
+            kernel_vectors = itertools.chain([first_vector], temp_kernel_vectors)
 
     with time_section("evaluating kernel vectors"):
         factorization = _evaluate_kernel_vectors(
