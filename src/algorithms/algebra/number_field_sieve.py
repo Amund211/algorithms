@@ -839,6 +839,7 @@ def _sieve_for_relations(
     U: tuple[tuple[int, ...], ...],
     G: tuple[tuple[int, ...], ...],
     W_inv: npt.NDArray[np.float64],
+    verify_factorization: bool,
     params: Params,
 ) -> npt.NDArray[np.int32]:
     """Search for relations gcd(a, b) == 1, |a + bm| B1 smooth, a + balpha B2 smooth"""
@@ -1009,43 +1010,72 @@ def _sieve_for_relations(
             v_u = compute_v(gamma, G, G_contribution, params)
             unitless = multiply(gamma, invert(v_u, params), params)
 
-            U_plus_contribution = W_inv @ nu(v_u, params)
+            try:
+                U_plus_contribution = W_inv @ nu(v_u, params)
+            except ValueError:
+                phi_norms = tuple(
+                    abs(phi_i(v_u, i=i, params=params)) for i in range(params.l)
+                )
+                log(
+                    f"Unit contribution of {a} + {b}*alpha failed due to domain error. "
+                    f"{v_u=}{phi_norms=}",
+                    logger=Logger.SIEVE,
+                    level=LogLevel.WARNING,
+                )
+                continue
+
             # YOLO rounding:
             U_contribution = (e_u0, *map(round, U_plus_contribution))
 
-            # Compute (a + b alpha) from the factorization to verify
-            prime_result = functools.reduce(
-                functools.partial(multiply, params=params),
+            if any(
                 itertools.starmap(
-                    lambda base, exponent: compute_power(base, exponent, params),
-                    zip(G, G_contribution),
-                ),
-                to_full_vector(1, 0, params),
-            )
-            unit_result = functools.reduce(
-                functools.partial(multiply, params=params),
-                itertools.starmap(
-                    lambda base, exponent: compute_power(base, exponent, params),
-                    zip(U, U_contribution),
-                ),
-                to_full_vector(1, 0, params),
-            )
-
-            result = multiply(prime_result, unit_result, params)
-
-            assert prime_result == unitless, f"{prime_result=} {unitless=}"
-
-            try:
-                assert unit_result == v_u, f"{unit_result=} {v_u=}"
-                assert result == gamma, f"{result=} {gamma}"
-            except AssertionError:
+                    lambda exponent, rounded_exponent: abs(exponent - rounded_exponent)
+                    > 0.01,
+                    zip(U_contribution[1:], U_plus_contribution),
+                )
+            ):
                 log(
-                    f"Factorization of {a} + {b}*alpha failed due to rounding error. "
+                    f"Unit contribution of {a} + {b}*alpha failed due to rounding. "
                     f"{v_u=} {nu(v_u, params)=} estimated powers={U_plus_contribution}",
                     logger=Logger.SIEVE,
-                    level=LogLevel.ERROR,
+                    level=LogLevel.WARNING,
                 )
                 continue
+
+            if verify_factorization:
+                # Compute (a + b alpha) from the factorization to verify
+                prime_result = functools.reduce(
+                    functools.partial(multiply, params=params),
+                    itertools.starmap(
+                        lambda base, exponent: compute_power(base, exponent, params),
+                        zip(G, G_contribution),
+                    ),
+                    to_full_vector(1, 0, params),
+                )
+                unit_result = functools.reduce(
+                    functools.partial(multiply, params=params),
+                    itertools.starmap(
+                        lambda base, exponent: compute_power(base, exponent, params),
+                        zip(U, U_contribution),
+                    ),
+                    to_full_vector(1, 0, params),
+                )
+
+                result = multiply(prime_result, unit_result, params)
+
+                assert prime_result == unitless, f"{prime_result=} {unitless=}"
+
+                try:
+                    assert unit_result == v_u, f"{unit_result=} {v_u=}"
+                    assert result == gamma, f"{result=} {gamma}"
+                except AssertionError:
+                    log(
+                        f"Factorization of {a} + {b}*alpha failed. {v_u=} "
+                        f"{nu(v_u, params)=} estimated powers={U_plus_contribution}",
+                        logger=Logger.SIEVE,
+                        level=LogLevel.ERROR,
+                    )
+                    continue
 
             new_relation = (
                 *P_contribution,
@@ -1168,7 +1198,14 @@ def nfs(
 
     with time_section("sieveing"):
         powers_matrix = _sieve_for_relations(
-            ideals, ideals_per_prime, P, U, G, W_inv, params
+            ideals,
+            ideals_per_prime,
+            P,
+            U,
+            G,
+            W_inv,
+            verify_factorization=False,
+            params=params,
         )
 
     with time_section("computing kernel"):
@@ -1203,6 +1240,11 @@ if __name__ == "__main__":
             "extra_relations": 1,
         },
         {"r": 2, "e": 101, "s": 1},  # ~6 mins
+        {"r": 2, "e": 139, "s": 1, "prime_bound": 20000},  # ~6 mins
+        {"r": 2, "e": 167, "s": 1, "prime_bound": 10000},  # ~4 mins
+        {"r": 2, "e": 199, "s": 1, "prime_bound": 30000},  # ~15 mins
+        {"r": 2, "e": 227, "s": 1, "prime_bound": 60000},
+        {"r": 3, "e": 239, "s": 1, "prime_bound": 200000},
         {"r": 3, "e": 239, "s": 1, "prime_bound": 479910, "sieve_bound": 5 * 10**6},
         {"r": 2, "e": 373, "s": -1, "prime_bound": 287120, "sieve_bound": 5 * 10**6},
         {
@@ -1213,7 +1255,11 @@ if __name__ == "__main__":
             "sieve_bound": 250,
         },  # Fails w like 8
         # {"r":2, "e":512, "s":-1},  # alpha^2 / 2
+        # {"r": 2, "e": 128, "s": -1, "multiple": 2},  # r1 == 0
     )
+
+    kwargs = examples[4]
+
     logging.basicConfig(
         level=LogLevel.DEBUG,
         format="%(name)s;\x1b[0;36m%(levelname)-7s;\x1b[0m%(message)s",
@@ -1231,8 +1277,6 @@ if __name__ == "__main__":
 
     for logger, level in loglevels.items():
         logger.logger.setLevel(LogLevel.WARNING if quiet else level)
-
-    kwargs = examples[1]
 
     with time_section(f"nfs(**{kwargs})"):
         n = kwargs["r"] ** kwargs["e"] - kwargs["s"]
